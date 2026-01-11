@@ -1,0 +1,714 @@
+from abc import ABC, abstractmethod
+from typing import List, Dict, Tuple, Optional
+import feedparser
+import requests
+import random
+import re
+from datetime import datetime, timezone
+from bs4 import BeautifulSoup
+from .. import models, schemas
+from sqlalchemy.orm import Session
+from geoalchemy2.elements import WKTElement
+
+# Iranian cities with coordinates for geo-inference
+IRAN_CITIES: Dict[str, Tuple[float, float]] = {
+    # Major cities
+    "tehran": (35.6892, 51.3890),
+    "تهران": (35.6892, 51.3890),
+    "isfahan": (32.6546, 51.6680),
+    "اصفهان": (32.6546, 51.6680),
+    "mashhad": (36.2605, 59.6168),
+    "مشهد": (36.2605, 59.6168),
+    "tabriz": (38.0962, 46.2919),
+    "تبریز": (38.0962, 46.2919),
+    "shiraz": (29.5918, 52.5837),
+    "شیراز": (29.5918, 52.5837),
+    "karaj": (35.8400, 50.9391),
+    "کرج": (35.8400, 50.9391),
+    "ahvaz": (31.3183, 48.6706),
+    "اهواز": (31.3183, 48.6706),
+    "qom": (34.6416, 50.8746),
+    "قم": (34.6416, 50.8746),
+    # Kurdish cities
+    "sanandaj": (35.3145, 46.9923),
+    "سنندج": (35.3145, 46.9923),
+    "mahabad": (36.7631, 45.7222),
+    "مهاباد": (36.7631, 45.7222),
+    "urmia": (37.5527, 45.0761),
+    "ارومیه": (37.5527, 45.0761),
+    "kermanshah": (34.3142, 47.0650),
+    "کرمانشاه": (34.3142, 47.0650),
+    # Baluchistan
+    "zahedan": (29.4963, 60.8629),
+    "زاهدان": (29.4963, 60.8629),
+    "chabahar": (25.2919, 60.6430),
+    "چابهار": (25.2919, 60.6430),
+    # Other major cities
+    "rasht": (37.2808, 49.5832),
+    "رشت": (37.2808, 49.5832),
+    "kerman": (30.2839, 57.0834),
+    "کرمان": (30.2839, 57.0834),
+    "yazd": (31.8974, 54.3569),
+    "یزد": (31.8974, 54.3569),
+    "bandar abbas": (27.1832, 56.2666),
+    "بندرعباس": (27.1832, 56.2666),
+    "hamadan": (34.7990, 48.5150),
+    "همدان": (34.7990, 48.5150),
+    "arak": (34.0954, 49.7013),
+    "اراک": (34.0954, 49.7013),
+    "ardabil": (38.2498, 48.2933),
+    "اردبیل": (38.2498, 48.2933),
+    "gorgan": (36.8427, 54.4353),
+    "گرگان": (36.8427, 54.4353),
+    "zanjan": (36.6736, 48.4787),
+    "زنجان": (36.6736, 48.4787),
+    "sari": (36.5633, 53.0601),
+    "ساری": (36.5633, 53.0601),
+    "qazvin": (36.2688, 50.0041),
+    "قزوین": (36.2688, 50.0041),
+    "borujerd": (33.8974, 48.7516),
+    "بروجرد": (33.8974, 48.7516),
+    "dezful": (32.3811, 48.4018),
+    "دزفول": (32.3811, 48.4018),
+    "kashan": (33.9850, 51.4100),
+    "کاشان": (33.9850, 51.4100),
+    # Universities
+    "sharif": (35.7022, 51.3513),
+    "دانشگاه شریف": (35.7022, 51.3513),
+    "amirkabir": (35.7005, 51.4056),
+    "دانشگاه امیرکبیر": (35.7005, 51.4056),
+    "tehran university": (35.7129, 51.3981),
+    "دانشگاه تهران": (35.7129, 51.3981),
+    # Additional cities
+    "ilam": (33.6374, 46.4227),
+    "ایلام": (33.6374, 46.4227),
+    "bojnurd": (37.4747, 57.3290),
+    "بجنورد": (37.4747, 57.3290),
+    "bushehr": (28.9684, 50.8385),
+    "بوشهر": (28.9684, 50.8385),
+    "birjand": (32.8663, 59.2211),
+    "بیرجند": (32.8663, 59.2211),
+    "khorramabad": (33.4878, 48.3558),
+    "خرم‌آباد": (33.4878, 48.3558),
+    "semnan": (35.5769, 53.3970),
+    "سمنان": (35.5769, 53.3970),
+    "shahr-e kord": (32.3256, 50.8645),
+    "شهرکرد": (32.3256, 50.8645),
+    "yasuj": (30.6684, 51.5880),
+    "یاسوج": (30.6684, 51.5880),
+}
+
+# International cities with Iranian diaspora (for solidarity protests)
+DIASPORA_CITIES: Dict[str, Tuple[float, float]] = {
+    # Europe
+    "stockholm": (59.3293, 18.0686),
+    "استکهلم": (59.3293, 18.0686),
+    "london": (51.5074, -0.1278),
+    "لندن": (51.5074, -0.1278),
+    "berlin": (52.5200, 13.4050),
+    "برلین": (52.5200, 13.4050),
+    "paris": (48.8566, 2.3522),
+    "پاریس": (48.8566, 2.3522),
+    "amsterdam": (52.3676, 4.9041),
+    "آمستردام": (52.3676, 4.9041),
+    "brussels": (50.8503, 4.3517),
+    "بروکسل": (50.8503, 4.3517),
+    "vienna": (48.2082, 16.3738),
+    "وین": (48.2082, 16.3738),
+    "frankfurt": (50.1109, 8.6821),
+    "فرانکفورت": (50.1109, 8.6821),
+    "hamburg": (53.5511, 9.9937),
+    "هامبورگ": (53.5511, 9.9937),
+    "cologne": (50.9375, 6.9603),
+    "کلن": (50.9375, 6.9603),
+    "munich": (48.1351, 11.5820),
+    "مونیخ": (48.1351, 11.5820),
+    "oslo": (59.9139, 10.7522),
+    "اسلو": (59.9139, 10.7522),
+    "copenhagen": (55.6761, 12.5683),
+    "کپنهاگ": (55.6761, 12.5683),
+    "geneva": (46.2044, 6.1432),
+    "ژنو": (46.2044, 6.1432),
+    "rome": (41.9028, 12.4964),
+    "رم": (41.9028, 12.4964),
+    "madrid": (40.4168, -3.7038),
+    "مادرید": (40.4168, -3.7038),
+    # North America
+    "washington": (38.9072, -77.0369),
+    "واشنگتن": (38.9072, -77.0369),
+    "new york": (40.7128, -74.0060),
+    "نیویورک": (40.7128, -74.0060),
+    "los angeles": (34.0522, -118.2437),
+    "لس آنجلس": (34.0522, -118.2437),
+    "toronto": (43.6532, -79.3832),
+    "تورنتو": (43.6532, -79.3832),
+    "vancouver": (49.2827, -123.1207),
+    "ونکوور": (49.2827, -123.1207),
+    "san francisco": (37.7749, -122.4194),
+    "سانفرانسیسکو": (37.7749, -122.4194),
+    # Australia
+    "sydney": (33.8688, 151.2093),
+    "سیدنی": (33.8688, 151.2093),
+    "melbourne": (37.8136, 144.9631),
+    "ملبورن": (37.8136, 144.9631),
+    # Other
+    "dubai": (25.2048, 55.2708),
+    "دبی": (25.2048, 55.2708),
+    "istanbul": (41.0082, 28.9784),
+    "استانبول": (41.0082, 28.9784),
+    # Countries (for general references)
+    "sweden": (59.3293, 18.0686),
+    "سوئد": (59.3293, 18.0686),
+    "germany": (52.5200, 13.4050),
+    "آلمان": (52.5200, 13.4050),
+    "france": (48.8566, 2.3522),
+    "فرانسه": (48.8566, 2.3522),
+    "england": (51.5074, -0.1278),
+    "انگلیس": (51.5074, -0.1278),
+    "uk": (51.5074, -0.1278),
+    "canada": (43.6532, -79.3832),
+    "کانادا": (43.6532, -79.3832),
+    "usa": (38.9072, -77.0369),
+    "آمریکا": (38.9072, -77.0369),
+    "america": (38.9072, -77.0369),
+}
+
+# Protest-related keywords in Persian and English
+PROTEST_KEYWORDS = [
+    # Persian - Core protest terms
+    "اعتراض", "تظاهرات", "اعتصاب", "شورش", "درگیری",
+    "تجمع", "راهپیمایی", "شعار", "بازداشت", "زن زندگی آزادی",
+    "مهسا امینی", "کشته", "زخمی", "گلوله", "سرکوب",
+    "بسیج", "سپاه", "نیروی انتظامی", "اینترنت", "قطعی",
+    # Persian - Additional terms
+    "معترض", "معترضان", "خیابان", "آتش", "ناآرامی",
+    "حکومت", "رژیم", "دیکتاتور", "آزادی", "انقلاب",
+    "مردم", "خشونت", "پلیس", "ضرب و شتم", "شهید",
+    # English
+    "protest", "demonstration", "strike", "unrest", "clash",
+    "rally", "march", "arrest", "detained", "woman life freedom",
+    "mahsa amini", "killed", "shot", "crackdown", "shutdown",
+    "basij", "irgc", "police", "internet", "blackout",
+    "uprising", "revolution", "regime", "dictator", "freedom",
+    # Hashtags (without #)
+    "iranprotests", "iranrevolution", "mahsaamini", "womanlifefreedom",
+    "زن_زندگی_آزادی", "مهسا_امینی",
+]
+
+# ============================================================================
+# RSS FEEDS - News Outlets
+# ============================================================================
+RSS_FEEDS = {
+    # Persian Language News
+    "bbc_persian": {
+        "url": "https://feeds.bbci.co.uk/persian/rss.xml",
+        "name": "BBC Persian",
+        "reliability": 0.9,
+    },
+    "dw_persian": {
+        "url": "https://rss.dw.com/xml/rss-fa-all",
+        "name": "DW Persian",
+        "reliability": 0.85,
+    },
+    "voa_persian": {
+        "url": "https://ir.voanews.com/api/ziqp$eqopi",
+        "name": "VOA Persian",
+        "reliability": 0.85,
+    },
+    # International News in English
+    "reuters_world": {
+        "url": "https://www.reutersagency.com/feed/?best-regions=middle-east&post_type=best",
+        "name": "Reuters Middle East",
+        "reliability": 0.9,
+    },
+    "aljazeera": {
+        "url": "https://www.aljazeera.com/xml/rss/all.xml",
+        "name": "Al Jazeera",
+        "reliability": 0.75,
+    },
+    # Human Rights Organizations
+    "hrw": {
+        "url": "https://www.hrw.org/rss/news_feed/all",
+        "name": "Human Rights Watch",
+        "reliability": 0.95,
+    },
+    "amnesty": {
+        "url": "https://www.amnesty.org/en/feed/",
+        "name": "Amnesty International",
+        "reliability": 0.95,
+    },
+}
+
+# ============================================================================
+# TWITTER/X ACCOUNTS TO MONITOR (via Nitter)
+# ============================================================================
+TWITTER_ACCOUNTS = [
+    # News outlets
+    "IranIntl_En",      # Iran International English
+    "IranIntl",         # Iran International Persian
+    "ABORSAT",          # Persian news
+    "Aborsat_farsi",    # News
+    # Journalists & Activists
+    "ManijehNasrabadi", # Journalist
+    "AlinejadMasih",    # Activist
+    "NiohBerg",         # Analyst
+    "UK_REPT",          # UK-based coverage
+    "RealPersianGod",   # Commentary
+    "Savakzadeh",       # Coverage
+    # OSINT & Citizen journalism
+    "1500tasvir",       # Citizen journalism
+    "HengawO",          # Kurdistan human rights
+]
+
+# Nitter instances (public Twitter mirrors) - tested and working
+NITTER_INSTANCES = [
+    "twiiit.com",           # Currently working
+    "nitter.net",           # Backup
+    "xcancel.com",          # Backup
+    "nitter.poast.org",     # Backup
+]
+
+# ============================================================================
+# TELEGRAM CHANNELS (Public Web Interface)
+# Note: Only channels with public preview enabled will work
+# ============================================================================
+TELEGRAM_CHANNELS = [
+    # Working channels with public preview
+    "bbcpersian",           # BBC Persian - WORKS
+    "iranworkers",          # Labor protests - WORKS
+    "Iran_Revolutionn",     # Revolution coverage - WORKS
+    "irannc",               # Iran news - WORKS
+    "Farsi_Iranwire",       # IranWire Persian - WORKS
+    # May work (public preview status varies)
+    "iranintl",
+    "manikiusa",
+    "VOAfarsi",
+    "radiofaborsat",
+    "IranHrm",
+    "Iran_Revolutionn",
+    "irannc",
+    "Farsi_Iranwire",
+]
+
+
+class DataSource(ABC):
+    source_type: str = "unknown"
+    
+    @abstractmethod
+    def fetch_events(self) -> List[schemas.ProtestEventCreate]:
+        pass
+
+    def _extract_location(self, text: str) -> Optional[Tuple[str, float, float, bool]]:
+        """Extract location from text by matching city names.
+        Returns: (city_name, lat, lon, is_diaspora)
+        """
+        text_lower = text.lower()
+        
+        # Check diaspora cities FIRST (solidarity protests abroad)
+        for city_name, coords in DIASPORA_CITIES.items():
+            if city_name.lower() in text_lower or city_name in text:
+                return (city_name, coords[0], coords[1], True)  # True = diaspora
+        
+        # Then check Iranian cities
+        for city_name, coords in IRAN_CITIES.items():
+            if city_name.lower() in text_lower or city_name in text:
+                return (city_name, coords[0], coords[1], False)  # False = inside Iran
+        
+        return None
+
+    def _calculate_intensity(self, text: str) -> float:
+        """Calculate intensity score based on keyword density"""
+        text_lower = text.lower()
+        matches = sum(1 for kw in PROTEST_KEYWORDS if kw.lower() in text_lower or kw in text)
+        
+        intensity = min(matches / 5.0, 1.0)
+        return max(intensity, 0.1)
+
+    def _is_protest_related(self, text: str) -> bool:
+        """Check if text contains protest-related keywords"""
+        text_lower = text.lower()
+        return any(kw.lower() in text_lower or kw in text for kw in PROTEST_KEYWORDS)
+
+
+class RSSSource(DataSource):
+    """Fetch and parse RSS feeds from news sources"""
+    source_type = "rss"
+    
+    def __init__(self, feeds: Dict = None):
+        self.feeds = feeds or RSS_FEEDS
+
+    def fetch_events(self) -> List[schemas.ProtestEventCreate]:
+        events = []
+        
+        for feed_id, feed_config in self.feeds.items():
+            url = feed_config["url"]
+            source_name = feed_config["name"]
+            reliability = feed_config.get("reliability", 0.5)
+            
+            try:
+                feed = feedparser.parse(url)
+                
+                for entry in feed.entries[:25]:
+                    title = entry.get('title', '')
+                    summary = entry.get('summary', entry.get('description', ''))
+                    full_text = f"{title} {summary}"
+                    
+                    # Must contain Iran-related AND protest-related content
+                    if not self._is_protest_related(full_text):
+                        continue
+                    
+                    if 'iran' not in full_text.lower() and 'ایران' not in full_text:
+                        continue
+                    
+                    location = self._extract_location(full_text)
+                    if not location:
+                        location = ("Tehran (inferred)", 
+                                   35.6892 + random.uniform(-0.1, 0.1), 
+                                   51.3890 + random.uniform(-0.1, 0.1),
+                                   False)
+                    
+                    city_name, lat, lon, is_diaspora = location
+                    
+                    # Parse timestamp with timezone
+                    try:
+                        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                            timestamp = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                        else:
+                            timestamp = datetime.now(timezone.utc)
+                    except:
+                        timestamp = datetime.now(timezone.utc)
+                    
+                    intensity = self._calculate_intensity(full_text)
+                    source_url = entry.get('link', '')
+                    
+                    events.append(schemas.ProtestEventCreate(
+                        title=f"[{source_name}] {title[:180]}" if title else f"[{source_name}] Report",
+                        description=summary[:500] if summary else "",
+                        latitude=lat,
+                        longitude=lon,
+                        intensity_score=intensity,
+                        verified=(reliability >= 0.9),  # High reliability = verified
+                        timestamp=timestamp,
+                        source_url=source_url
+                    ))
+                    
+            except Exception as e:
+                print(f"Error fetching RSS feed {feed_id}: {e}")
+                continue
+        
+        return events
+
+
+class TwitterSource(DataSource):
+    """Fetch tweets via Nitter (public Twitter mirror)"""
+    source_type = "twitter"
+    
+    def __init__(self, accounts: List[str] = None, instances: List[str] = None):
+        self.accounts = accounts or TWITTER_ACCOUNTS
+        self.instances = instances or NITTER_INSTANCES
+
+    def _get_working_instance(self) -> Optional[str]:
+        """Find a working Nitter instance by testing RSS feed"""
+        # Note: Nitter instances are frequently blocked by Twitter/X
+        # This is a best-effort approach
+        test_accounts = ["bbcpersian", "voaborsat"]  # Less likely to be blocked
+        
+        for instance in self.instances:
+            for test_account in test_accounts:
+                try:
+                    url = f"https://{instance}/{test_account}/rss"
+                    resp = requests.get(url, timeout=5, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'application/rss+xml, application/xml'
+                    })
+                    # Check for actual RSS content, not error pages
+                    if (resp.status_code == 200 and 
+                        len(resp.text) > 1000 and 
+                        '<item>' in resp.text and
+                        'whitelisted' not in resp.text.lower()):
+                        print(f"  Found working Nitter: {instance}")
+                        return instance
+                except:
+                    continue
+        print("  Note: Nitter instances are blocked/rate-limited. Consider using Twitter API.")
+        return None
+
+    def fetch_events(self) -> List[schemas.ProtestEventCreate]:
+        events = []
+        instance = self._get_working_instance()
+        
+        if not instance:
+            print("No working Nitter instance found")
+            return events
+        
+        for account in self.accounts:
+            try:
+                url = f"https://{instance}/{account}/rss"
+                feed = feedparser.parse(url)
+                
+                for entry in feed.entries[:15]:
+                    title = entry.get('title', '')
+                    content = entry.get('summary', '')
+                    full_text = f"{title} {content}"
+                    
+                    # For Twitter, be more lenient - just check for Iran mention
+                    has_iran = 'iran' in full_text.lower() or 'ایران' in full_text
+                    has_protest = self._is_protest_related(full_text)
+                    
+                    if not (has_iran or has_protest):
+                        continue
+                    
+                    location = self._extract_location(full_text)
+                    if not location:
+                        # Default to Tehran for Iran-related tweets without specific city
+                        location = ("Iran (Twitter)", 
+                                   35.6892 + random.uniform(-0.15, 0.15), 
+                                   51.3890 + random.uniform(-0.15, 0.15),
+                                   False)
+                    
+                    city_name, lat, lon, is_diaspora = location
+                    
+                    try:
+                        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                            timestamp = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                        else:
+                            timestamp = datetime.now(timezone.utc)
+                    except:
+                        timestamp = datetime.now(timezone.utc)
+                    
+                    intensity = self._calculate_intensity(full_text)
+                    source_url = entry.get('link', '')
+                    
+                    # Clean up Nitter URL to Twitter URL
+                    if instance in source_url:
+                        source_url = source_url.replace(f"https://{instance}", "https://twitter.com")
+                    
+                    events.append(schemas.ProtestEventCreate(
+                        title=f"[@{account}] {title[:150]}" if title else f"[@{account}] Tweet",
+                        description=content[:500] if content else "",
+                        latitude=lat + random.uniform(-0.02, 0.02),
+                        longitude=lon + random.uniform(-0.02, 0.02),
+                        intensity_score=intensity,
+                        verified=False,  # Social media is unverified by default
+                        timestamp=timestamp,
+                        source_url=source_url
+                    ))
+                    
+            except Exception as e:
+                print(f"Error fetching Twitter account @{account}: {e}")
+                continue
+        
+        return events
+
+
+class TelegramSource(DataSource):
+    """Fetch posts from public Telegram channels"""
+    source_type = "telegram"
+    
+    def __init__(self, channels: List[str] = None):
+        self.channels = channels or TELEGRAM_CHANNELS
+
+    def fetch_events(self) -> List[schemas.ProtestEventCreate]:
+        events = []
+        
+        for channel in self.channels:
+            # Strip @ if present
+            channel = channel.lstrip('@')
+            
+            try:
+                # Use Telegram's public web preview
+                url = f"https://t.me/s/{channel}"
+                resp = requests.get(url, timeout=10, headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                })
+                
+                if resp.status_code != 200:
+                    print(f"    @{channel}: HTTP {resp.status_code}")
+                    continue
+                
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                messages = soup.find_all('div', class_='tgme_widget_message_wrap')
+                
+                if not messages:
+                    continue
+                
+                channel_events = 0
+                for msg in messages[:20]:  # Check more messages
+                    try:
+                        text_elem = msg.find('div', class_='tgme_widget_message_text')
+                        if not text_elem:
+                            continue
+                        
+                        text = text_elem.get_text()
+                        
+                        # Less strict filtering for Iran-focused channels
+                        # Include if: has protest keywords OR mentions Iran/city
+                        has_iran = 'iran' in text.lower() or 'ایران' in text
+                        has_protest = self._is_protest_related(text)
+                        location = self._extract_location(text)
+                        has_location = location is not None
+                        
+                        if not (has_protest or (has_iran and has_location)):
+                            continue
+                        
+                        # Get location or default to Tehran area (only if no diaspora city found)
+                        if not location:
+                            location = ("Iran (Telegram)", 
+                                       35.6892 + random.uniform(-0.2, 0.2), 
+                                       51.3890 + random.uniform(-0.2, 0.2),
+                                       False)
+                        
+                        city_name, lat, lon, is_diaspora = location
+                        
+                        # Try to get timestamp
+                        time_elem = msg.find('time')
+                        if time_elem and time_elem.get('datetime'):
+                            try:
+                                timestamp = datetime.fromisoformat(time_elem['datetime'].replace('Z', '+00:00'))
+                            except:
+                                timestamp = datetime.now(timezone.utc)
+                        else:
+                            timestamp = datetime.now(timezone.utc)
+                        
+                        # Get message link
+                        link_elem = msg.find('a', class_='tgme_widget_message_date')
+                        source_url = link_elem['href'] if link_elem else f"https://t.me/{channel}"
+                        
+                        # Extract media (image or video)
+                        media_url = None
+                        media_type = None
+                        
+                        # Check for photo
+                        photo_elem = msg.find('a', class_='tgme_widget_message_photo_wrap')
+                        if photo_elem and photo_elem.get('style'):
+                            style = photo_elem['style']
+                            # Extract URL from background-image:url('...')
+                            import re
+                            match = re.search(r"url\(['\"]?(https?://[^'\"]+)['\"]?\)", style)
+                            if match:
+                                media_url = match.group(1)
+                                media_type = 'image'
+                        
+                        # Check for video if no photo
+                        if not media_url:
+                            # Try to find actual video element with src
+                            video_elem = msg.find('video')
+                            if video_elem and video_elem.get('src'):
+                                video_src = video_elem.get('src')
+                                if video_src.startswith('http'):
+                                    media_url = video_src
+                                    media_type = 'video'
+                            
+                            # Fallback to video thumbnail
+                            if not media_url:
+                                video_wrap = msg.find('div', class_='tgme_widget_message_video_wrap')
+                                if video_wrap:
+                                    thumb = video_wrap.find('i', class_='tgme_widget_message_video_thumb')
+                                    if thumb and thumb.get('style'):
+                                        style = thumb['style']
+                                        import re
+                                        match = re.search(r"url\(['\"]?(https?://[^'\"]+)['\"]?\)", style)
+                                        if match:
+                                            media_url = match.group(1)
+                                            media_type = 'video_thumb'  # Indicates it's just a thumbnail
+                        
+                        intensity = self._calculate_intensity(text)
+                        
+                        # Mark diaspora events in title
+                        if is_diaspora:
+                            title_prefix = f"[TG @{channel}] 🌍 {city_name}: "
+                        else:
+                            title_prefix = f"[TG @{channel}] "
+                        
+                        events.append(schemas.ProtestEventCreate(
+                            title=f"{title_prefix}{text[:90]}...",
+                            description=text[:500],
+                            latitude=lat + random.uniform(-0.02, 0.02),
+                            longitude=lon + random.uniform(-0.02, 0.02),
+                            intensity_score=intensity,
+                            verified=False,
+                            timestamp=timestamp,
+                            source_url=source_url,
+                            media_url=media_url,
+                            media_type=media_type
+                        ))
+                        channel_events += 1
+                        
+                    except Exception as e:
+                        continue
+                
+                if channel_events > 0:
+                    print(f"    @{channel}: {channel_events} events")
+                        
+            except Exception as e:
+                print(f"    @{channel}: Error - {str(e)[:30]}")
+                continue
+        
+        return events
+
+
+class IngestionService:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def run_ingestion(self):
+        """Run ingestion from all sources"""
+        all_events = []
+        
+        # 1. RSS News Sources (most reliable)
+        print("Fetching from RSS feeds...")
+        rss_source = RSSSource()
+        rss_events = rss_source.fetch_events()
+        all_events.extend(rss_events)
+        print(f"  -> {len(rss_events)} events from RSS")
+        
+        # 2. Twitter/X via Nitter
+        print("Fetching from Twitter/Nitter...")
+        try:
+            twitter_source = TwitterSource()
+            twitter_events = twitter_source.fetch_events()
+            all_events.extend(twitter_events)
+            print(f"  -> {len(twitter_events)} events from Twitter")
+        except Exception as e:
+            print(f"  -> Twitter fetch failed: {e}")
+        
+        # 3. Telegram public channels
+        print("Fetching from Telegram...")
+        try:
+            telegram_source = TelegramSource()
+            telegram_events = telegram_source.fetch_events()
+            all_events.extend(telegram_events)
+            print(f"  -> {len(telegram_events)} events from Telegram")
+        except Exception as e:
+            print(f"  -> Telegram fetch failed: {e}")
+        
+        # Save to DB (with duplicate checking)
+        count = 0
+        for event_data in all_events:
+            # Check for duplicates by title
+            existing = self.db.query(models.ProtestEvent).filter(
+                models.ProtestEvent.title == event_data.title
+            ).first()
+            
+            if existing:
+                continue
+            
+            db_event = models.ProtestEvent(
+                title=event_data.title,
+                description=event_data.description,
+                latitude=event_data.latitude,
+                longitude=event_data.longitude,
+                location=WKTElement(f'POINT({event_data.longitude} {event_data.latitude})', srid=4326),
+                intensity_score=event_data.intensity_score,
+                verified=event_data.verified,
+                timestamp=event_data.timestamp,
+                source_url=event_data.source_url,
+                media_url=event_data.media_url,
+                media_type=event_data.media_type
+            )
+            self.db.add(db_event)
+            count += 1
+        
+        self.db.commit()
+        print(f"Total new events saved: {count}")
+        return count

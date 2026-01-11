@@ -1,0 +1,42 @@
+# Dependencies
+node_modules
+.next
+
+# Git
+.git
+.gitignore
+
+# Development files
+.env*
+*.log
+.DS_Store
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.venv
+venv
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Build artifacts
+*.sqlite
+data/
+
+# Documentation (optional - keep DEPLOY_GCP.md out)
+# *.md
+
+# Duplicate frontend directory (use root app/)
+frontend/
+
+# Infrastructure configs (not needed in container)
+infrastructure/
+
+# Vercel (not needed for GCP)
+vercel.json
+api/
