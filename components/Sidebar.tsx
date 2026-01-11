@@ -107,11 +107,19 @@ export default function Sidebar({ event, onClose, stats }: SidebarProps) {
 
   if (!event) {
     return (
-      <div className="absolute top-4 left-4 z-10 w-80 bg-black/90 text-white p-6 border-l-4 border-red-600 backdrop-blur-md rounded-br-lg shadow-2xl">
-        <h1 className="text-2xl font-bold tracking-tighter mb-2 text-red-500 uppercase">
-          Iran Protest Map
+      <div className="absolute top-4 left-4 right-4 md:right-auto md:w-80 z-10 bg-black/90 text-white p-4 md:p-6 border-l-4 border-red-600 backdrop-blur-md rounded-br-lg shadow-2xl">
+        <h1 className="text-xl md:text-2xl font-bold tracking-tighter mb-2 text-red-500 uppercase flex justify-between items-center">
+          <span>Iran Protest Map</span>
+          <div className="flex md:hidden gap-2">
+            {/* Mobile stats summary */}
+            <span className="text-white text-sm font-mono">
+              {stats?.total_reports || 0} Reports
+            </span>
+          </div>
         </h1>
-        <div className="space-y-4">
+
+        {/* Desktop full stats / Mobile expanded details could go here, but keeping it simple for now */}
+        <div className="hidden md:block space-y-4">
           <div className="flex justify-between items-center border-b border-gray-800 pb-2">
             <span className="text-gray-400 text-sm">Reports (12h)</span>
             <span className="text-xl font-mono text-red-500">
@@ -129,6 +137,11 @@ export default function Sidebar({ event, onClose, stats }: SidebarProps) {
             point for details.
           </p>
         </div>
+
+        {/* Mobile simplified hint */}
+        <div className="md:hidden text-xs text-gray-500 mt-1">
+          Tap points for details. Red: Unverified, White: Verified.
+        </div>
       </div>
     );
   }
@@ -143,15 +156,16 @@ export default function Sidebar({ event, onClose, stats }: SidebarProps) {
       : event.properties.description;
 
   return (
-    <div className="absolute top-4 right-4 z-10 w-96 bg-zinc-950 text-white border-r-4 border-red-600 shadow-2xl h-[calc(100vh-2rem)] overflow-y-auto">
-      <div className="p-6">
+    <div className="absolute inset-x-0 bottom-0 md:top-4 md:bottom-auto md:right-4 md:left-auto md:w-96 z-20 bg-zinc-950 text-white border-t-4 md:border-t-0 md:border-r-4 border-red-600 shadow-2xl max-h-[80vh] md:h-[calc(100vh-2rem)] overflow-y-auto rounded-t-xl md:rounded-xl md:rounded-r-none transition-transform duration-300 ease-in-out">
+      <div className="p-4 md:p-6">
+        {/* Close button - adjusted for mobile hit area */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white">
+          className="absolute top-2 right-2 md:top-4 md:right-4 p-2 text-gray-400 hover:text-white bg-black/20 rounded-full md:bg-transparent">
           <X size={24} />
         </button>
 
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="flex items-center gap-2 mb-4 flex-wrap pr-8 md:pr-0">
           {event.properties.verified ? (
             <span className="flex items-center gap-1 bg-white text-black px-2 py-0.5 text-xs font-bold uppercase tracking-wider">
               <Shield size={12} /> Verified

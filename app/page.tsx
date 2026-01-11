@@ -55,11 +55,11 @@ export default function Home() {
       />
       
       {/* Narrative/Layer Toggles */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-4 z-10">
+      <div className="absolute bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 flex gap-2 md:gap-4 z-10 w-full md:w-auto px-4 justify-center">
         <button 
-          className={`bg-zinc-900/80 backdrop-blur border px-6 py-2 rounded-full uppercase text-xs font-bold tracking-widest transition-all ${
+          className={`bg-zinc-900/90 backdrop-blur border px-4 md:px-6 py-2 rounded-full uppercase text-[10px] md:text-xs font-bold tracking-widest transition-all flex-1 md:flex-none whitespace-nowrap ${
             !verifiedOnly 
-              ? 'text-red-500 border-red-900/50 hover:bg-red-900/20' 
+              ? 'text-red-500 border-red-900/50 hover:bg-red-900/20 shadow-[0_0_15px_rgba(220,38,38,0.3)]' 
               : 'text-gray-500 border-gray-800 hover:text-white'
           }`}
           onClick={() => setVerifiedOnly(false)}
@@ -67,9 +67,9 @@ export default function Home() {
           Live Heatmap
         </button>
         <button 
-          className={`bg-zinc-900/80 backdrop-blur border px-6 py-2 rounded-full uppercase text-xs font-bold tracking-widest transition-all ${
+          className={`bg-zinc-900/90 backdrop-blur border px-4 md:px-6 py-2 rounded-full uppercase text-[10px] md:text-xs font-bold tracking-widest transition-all flex-1 md:flex-none whitespace-nowrap ${
             verifiedOnly 
-              ? 'text-white border-white/50 bg-white/10' 
+              ? 'text-white border-white/50 bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.2)]' 
               : 'text-gray-500 border-gray-800 hover:text-white'
           }`}
           onClick={handleVerifiedToggle}
