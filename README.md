@@ -2,6 +2,8 @@
 
 A real-time interactive heatmap visualization of protest events in Iran, aggregating data from multiple sources including Telegram channels and RSS feeds. Built with Next.js, FastAPI, and deck.gl.
 
+Website (URL to be updated): https://iran-protest-map-435357314840.us-central1.run.app/
+
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688)
@@ -29,6 +31,7 @@ A real-time interactive heatmap visualization of protest events in Iran, aggrega
 - [Security](#-security)
 - [Community](#-community)
 - [License](#-license)
+- [Roadmap](#-roadmap)
 
 ---
 
@@ -525,6 +528,36 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## 🗺️ Roadmap
+
+See our full [TODO.md](TODO.md) for the complete roadmap. Key priorities:
+
+### Coming Soon
+
+| Feature                      | Status      | Priority     |
+| ---------------------------- | ----------- | ------------ |
+| Official X.com (Twitter) API | 🔴 Planned  | High         |
+| More Telegram channels       | 🔴 Planned  | High         |
+| Date range filtering         | 🟡 Planned  | Medium       |
+| City/region filtering        | 🟡 Planned  | Medium       |
+| Event search                 | 🟡 Planned  | Medium       |
+| Export (CSV/JSON)            | 🟡 Planned  | Medium       |
+| GitHub Actions CI/CD         | 🟢 Planned  | Nice to have |
+| PWA support                  | 🟢 Planned  | Nice to have |
+| Real-time WebSocket updates  | 🔵 Research | Future       |
+
+### Current Data Source Status
+
+| Source             | Status        |
+| ------------------ | ------------- |
+| BBC Persian RSS    | ✅ Working    |
+| DW Persian RSS     | ✅ Working    |
+| Human Rights Watch | ✅ Working    |
+| Twitter/Nitter     | ❌ Unreliable |
+| Telegram Public    | ⚠️ Partial    |
+
+👉 **Want to contribute?** Check [TODO.md](TODO.md) and pick a task!
 
 ## 🙏 Acknowledgments
 
