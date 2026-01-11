@@ -21,7 +21,7 @@ This project and everyone participating in it is governed by our Code of Conduct
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/iran_map.git
+   git clone https://github.com/nklsings/iran_map.git
    cd iran_map
    ```
 3. **Add the upstream remote**:
@@ -53,6 +53,7 @@ Know a reliable source for protest information? Use the data source template to 
 ### 📝 Documentation
 
 Documentation improvements are always welcome:
+
 - Fix typos or unclear wording
 - Add examples
 - Improve API documentation
@@ -61,6 +62,7 @@ Documentation improvements are always welcome:
 ### 🌍 Translations
 
 Help translate:
+
 - UI elements to Persian or other languages
 - Improve geocoding for Persian city names
 - Documentation to other languages
@@ -78,7 +80,7 @@ Help translate:
 
 ```bash
 # Clone and enter directory
-git clone https://github.com/YOUR_USERNAME/iran_map.git
+git clone https://github.com/nklsings/iran_map.git
 cd iran_map
 
 # Start all services with Docker
@@ -91,12 +93,14 @@ docker-compose up -d
 ### Manual Setup
 
 **Frontend:**
+
 ```bash
 npm install
 npm run dev
 ```
 
 **Backend:**
+
 ```bash
 cd backend
 python -m venv venv
@@ -165,16 +169,16 @@ We use [Conventional Commits](https://www.conventionalcommits.org/). Format:
 
 ### Types
 
-| Type | Description |
-|------|-------------|
-| `feat` | New feature |
-| `fix` | Bug fix |
-| `docs` | Documentation only |
-| `style` | Formatting, no code change |
+| Type       | Description                                             |
+| ---------- | ------------------------------------------------------- |
+| `feat`     | New feature                                             |
+| `fix`      | Bug fix                                                 |
+| `docs`     | Documentation only                                      |
+| `style`    | Formatting, no code change                              |
 | `refactor` | Code change that neither fixes a bug nor adds a feature |
-| `perf` | Performance improvement |
-| `test` | Adding or updating tests |
-| `chore` | Maintenance tasks |
+| `perf`     | Performance improvement                                 |
+| `test`     | Adding or updating tests                                |
+| `chore`    | Maintenance tasks                                       |
 
 ### Examples
 
@@ -188,12 +192,14 @@ refactor(ingestion): simplify geocoding logic
 ## Pull Request Process
 
 1. **Update your fork** with the latest upstream changes:
+
    ```bash
    git fetch upstream
    git rebase upstream/main
    ```
 
 2. **Create a feature branch**:
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -201,6 +207,7 @@ refactor(ingestion): simplify geocoding logic
 3. **Make your changes** following the style guidelines
 
 4. **Test thoroughly**:
+
    - Run the frontend and backend locally
    - Test your specific changes
    - Ensure no regressions
@@ -208,11 +215,13 @@ refactor(ingestion): simplify geocoding logic
 5. **Commit your changes** using conventional commits
 
 6. **Push to your fork**:
+
    ```bash
    git push origin feature/your-feature-name
    ```
 
 7. **Open a Pull Request**:
+
    - Use the PR template
    - Link to related issues
    - Provide screenshots if UI changes
@@ -225,9 +234,9 @@ refactor(ingestion): simplify geocoding logic
 ## Questions?
 
 Feel free to:
+
 - Open a discussion on GitHub
 - Comment on an issue
 - Reach out to maintainers
 
 Thank you for contributing! 🙏
-
