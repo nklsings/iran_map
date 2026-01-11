@@ -6,6 +6,31 @@ A real-time interactive heatmap visualization of protest events in Iran, aggrega
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688)
 ![PostGIS](https://img.shields.io/badge/PostGIS-15-336791)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
+![Contributors](https://img.shields.io/badge/contributors-welcome-orange.svg)
+![Good First Issues](https://img.shields.io/badge/good%20first%20issues-available-blueviolet)
+
+---
+
+## 📑 Table of Contents
+
+- [Features](#-features)
+- [Architecture](#️-architecture)
+- [Tech Stack](#️-tech-stack)
+- [Getting Started](#-getting-started)
+- [API Endpoints](#-api-endpoints)
+- [Environment Variables](#️-environment-variables)
+- [Docker Commands](#-docker-commands)
+- [Production Deployment](#-production-deployment)
+- [Project Structure](#-project-structure)
+- [Contributing](#-contributing)
+- [Reporting Issues](#-reporting-issues)
+- [Code of Conduct](#️-code-of-conduct)
+- [Security](#-security)
+- [Community](#-community)
+- [License](#-license)
+
+---
 
 ## ✨ Features
 
@@ -303,22 +328,218 @@ iran_map/
 └── vercel.json          # Vercel configuration
 ```
 
-## 📄 License
-
-This project is licensed under the MIT License.
-
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions from developers, designers, translators, and human rights advocates! This project relies on community involvement to improve coverage and accuracy.
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+### Ways to Contribute
+
+| Type                      | Description                                        |
+| ------------------------- | -------------------------------------------------- |
+| 🐛 **Bug Reports**        | Found a bug? Open an issue with steps to reproduce |
+| ✨ **Feature Requests**   | Have an idea? Open an issue to discuss it first    |
+| 🔧 **Code Contributions** | Submit PRs for bug fixes or approved features      |
+| 🌍 **Translations**       | Help translate the UI or improve Persian geocoding |
+| 📊 **Data Sources**       | Suggest reliable Telegram channels or news sources |
+| 📝 **Documentation**      | Improve docs, fix typos, add examples              |
+
+### Development Workflow
+
+1. **Fork & Clone**
+
+```bash
+git clone https://github.com/nklsings/iran_map.git
+cd iran_map
+git remote add upstream https://github.com/ORIGINAL_OWNER/iran_map.git
+```
+
+2. **Create a Branch**
+
+```bash
+git checkout -b feature/your-feature-name
+# or
+git checkout -b fix/issue-description
+```
+
+3. **Make Changes**
+
+   - Follow the existing code style
+   - Add tests for new functionality
+   - Update documentation as needed
+
+4. **Test Locally**
+
+```bash
+# Run frontend
+npm run dev
+
+# Run backend
+cd backend && uvicorn app.main:app --reload
+
+# Or use Docker
+docker-compose up -d
+```
+
+5. **Commit with Conventional Commits**
+
+```bash
+git commit -m "feat: add new geocoding provider"
+git commit -m "fix: resolve translation timeout issue"
+git commit -m "docs: update API endpoint documentation"
+```
+
+6. **Push & Create PR**
+
+```bash
+git push origin feature/your-feature-name
+```
+
+Then open a Pull Request against `main` with a clear description.
+
+### Code Style Guidelines
+
+**Frontend (TypeScript/React)**
+
+- Use functional components with hooks
+- Follow existing Tailwind CSS patterns
+- Use TypeScript strict mode
+- Prefer named exports
+
+**Backend (Python)**
+
+- Follow PEP 8 style guide
+- Use type hints for all functions
+- Keep functions focused and small
+- Document complex logic with comments
+
+### Pull Request Checklist
+
+- [ ] Code follows project style guidelines
+- [ ] Self-reviewed the changes
+- [ ] Added/updated tests if applicable
+- [ ] Updated documentation if needed
+- [ ] No console.log or print statements left behind
+- [ ] Tested on both frontend and backend if relevant
+
+## 🐛 Reporting Issues
+
+### Bug Reports
+
+When reporting bugs, please include:
+
+- **Environment**: OS, browser, Node.js/Python version
+- **Steps to reproduce**: Clear step-by-step instructions
+- **Expected behavior**: What should happen
+- **Actual behavior**: What actually happens
+- **Screenshots/logs**: If applicable
+
+### Feature Requests
+
+For new features, please describe:
+
+- **Use case**: Why is this feature needed?
+- **Proposed solution**: How should it work?
+- **Alternatives considered**: Other approaches you've thought about
+
+## 🛡️ Code of Conduct
+
+We are committed to providing a welcoming and safe environment for all contributors.
+
+### Our Standards
+
+**✅ Expected Behavior:**
+
+- Be respectful and inclusive
+- Welcome newcomers and help them get started
+- Accept constructive criticism gracefully
+- Focus on what's best for the community and project
+
+**❌ Unacceptable Behavior:**
+
+- Harassment, discrimination, or personal attacks
+- Trolling or inflammatory comments
+- Publishing others' private information
+- Any conduct inappropriate in a professional setting
+
+### Enforcement
+
+Violations may result in temporary or permanent bans from the project. Report issues to the maintainers via GitHub issues or direct message.
+
+## 🔒 Security
+
+### Reporting Vulnerabilities
+
+If you discover a security vulnerability, please **do not** open a public issue. Instead:
+
+1. Email the maintainers directly (check GitHub profiles for contact info)
+2. Include a detailed description of the vulnerability
+3. Allow reasonable time for a fix before public disclosure
+
+We take security seriously and will respond promptly to valid reports.
+
+### Security Best Practices
+
+- Never commit API keys, passwords, or secrets
+- Use environment variables for sensitive configuration
+- Keep dependencies updated
+- Report any suspicious data in the ingestion pipeline
+
+## 💬 Community
+
+### Getting Help
+
+- **GitHub Issues** — For bugs and feature requests
+- **GitHub Discussions** — For questions and general discussion
+- **Pull Request Comments** — For code-specific feedback
+
+### Stay Updated
+
+- ⭐ Star the repository to show support
+- 👁️ Watch for release notifications
+- 🍴 Fork to experiment with your own ideas
+
+## 📄 License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+```
+MIT License
+
+Copyright (c) 2026
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 🙏 Acknowledgments
+
+- [deck.gl](https://deck.gl/) — Powerful WebGL visualization
+- [MapLibre](https://maplibre.org/) — Open-source mapping
+- [FastAPI](https://fastapi.tiangolo.com/) — Modern Python API framework
+- [PostGIS](https://postgis.net/) — Geospatial database extensions
+- All contributors and the open-source community
 
 ---
 
 <p align="center">
-  Built with ❤️ for transparency and human rights documentation
+  <strong>Built with ❤️ for transparency and human rights documentation</strong>
+</p>
+
+<p align="center">
+  <a href="#-iran-protest-map">Back to Top ↑</a>
 </p>

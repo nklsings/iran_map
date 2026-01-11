@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/nklsings/iran_map/discussions
+    about: Ask questions, share ideas, or connect with the community
+  - name: 📖 Documentation
+    url: https://github.com/nklsings/iran_map#readme
+    about: Read the documentation before opening an issue
