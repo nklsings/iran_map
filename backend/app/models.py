@@ -4,6 +4,13 @@ from geoalchemy2 import Geometry
 from sqlalchemy.sql import func
 from .database import Base
 
+# Event type constants
+EVENT_TYPE_PROTEST = "protest"
+EVENT_TYPE_POLICE = "police_presence"
+EVENT_TYPE_STRIKE = "strike"
+EVENT_TYPE_CLASH = "clash"
+EVENT_TYPE_ARREST = "arrest"
+
 class ProtestEvent(Base):
     __tablename__ = "protest_events"
 
@@ -17,6 +24,9 @@ class ProtestEvent(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     verified = Column(Boolean, default=False)
     
+    # Event categorization (protest, police_presence, strike, clash, arrest)
+    event_type = Column(String, default=EVENT_TYPE_PROTEST, index=True)
+    
     # Store lat/lon explicitly as well for easier serialization if needed, 
     # though PostGIS is the source of truth for location.
     latitude = Column(Float)
@@ -24,6 +34,9 @@ class ProtestEvent(Base):
     source_url = Column(String, nullable=True)  # Original source URL
     media_url = Column(String, nullable=True)   # Image or video URL
     media_type = Column(String, nullable=True)  # 'image', 'video', or null
+    
+    # Source platform tracking
+    source_platform = Column(String, nullable=True)  # 'telegram', 'reddit', 'instagram', 'youtube', 'rss', 'twitter'
 
     sources = relationship("Source", back_populates="event")
 

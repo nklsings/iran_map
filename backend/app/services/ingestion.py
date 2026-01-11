@@ -196,6 +196,75 @@ PROTEST_KEYWORDS = [
 ]
 
 # ============================================================================
+# POLICE PRESENCE KEYWORDS (PPU - Police Presence Unit)
+# Keywords indicating security force presence, checkpoints, raids
+# ============================================================================
+POLICE_KEYWORDS = [
+    # Persian - Security forces
+    "نیروی انتظامی", "پلیس", "گشت", "ایست بازرسی", "بازداشت",
+    "یگان ویژه", "نوپو", "بسیج", "سپاه", "لباس شخصی",
+    "ماشین پلیس", "ون", "موتورسوار", "گارد", "نیروی امنیتی",
+    "ایستگاه پلیس", "کلانتری", "بازجویی", "احضار", "تعقیب",
+    "مستقر", "حضور نیرو", "محاصره", "بلوکه", "راه‌بندان",
+    # English - Security forces
+    "police", "security forces", "checkpoint", "raid", "patrol",
+    "riot police", "anti-riot", "basij", "irgc", "plainclothes",
+    "police van", "security vehicle", "motorcycle unit", "guard",
+    "police station", "detained", "interrogation", "summoned",
+    "deployed", "heavy presence", "surrounded", "blocked", "roadblock",
+    # Specific units
+    "sepah", "basiji", "etelaat", "intelligence", "morality police",
+    "گشت ارشاد", "پلیس امنیت", "اطلاعات",
+]
+
+# ============================================================================
+# REDDIT SUBREDDITS TO MONITOR
+# ============================================================================
+REDDIT_SUBREDDITS = [
+    "iran",             # Main Iran subreddit
+    "NewIran",          # Pro-democracy Iran
+    "iranian",          # Iranian community
+    "persianews",       # Persian news
+    "ProIran",          # Iran news/discussion
+]
+
+# ============================================================================
+# INSTAGRAM ACCOUNTS TO MONITOR (via public profile scraping)
+# ============================================================================
+INSTAGRAM_ACCOUNTS = [
+    "1500tasvir",           # Citizen journalism
+    "iranintl",             # Iran International
+    "rich_kids_of_tehran",  # May have protest content
+    "vahid_online",         # News
+]
+
+# ============================================================================
+# YOUTUBE CHANNELS (Persian News - via RSS feeds)
+# ============================================================================
+YOUTUBE_CHANNELS = {
+    "iran_international": {
+        "channel_id": "UCJ3lrLkWpLiR6DbnduzVnlw",
+        "name": "Iran International",
+        "reliability": 0.85,
+    },
+    "manoto_tv": {
+        "channel_id": "UCUjNk0F6sl1WuEoMKWmRWYg",
+        "name": "Manoto TV",
+        "reliability": 0.8,
+    },
+    "voa_persian": {
+        "channel_id": "UCgj6OVPPpSCz2bfYqEHO4Fg",
+        "name": "VOA Persian",
+        "reliability": 0.85,
+    },
+    "bbc_persian": {
+        "channel_id": "UCQfwfsi5VrQ8yKZ-UWmAEFg",
+        "name": "BBC Persian",
+        "reliability": 0.9,
+    },
+}
+
+# ============================================================================
 # RSS FEEDS - News Outlets
 # ============================================================================
 RSS_FEEDS = {
@@ -293,6 +362,7 @@ TELEGRAM_CHANNELS = [
 
 class DataSource(ABC):
     source_type: str = "unknown"
+    source_platform: str = "unknown"
     
     @abstractmethod
     def fetch_events(self) -> List[schemas.ProtestEventCreate]:
@@ -328,6 +398,61 @@ class DataSource(ABC):
         """Check if text contains protest-related keywords"""
         text_lower = text.lower()
         return any(kw.lower() in text_lower or kw in text for kw in PROTEST_KEYWORDS)
+    
+    def _is_police_related(self, text: str) -> bool:
+        """Check if text contains police presence keywords (PPU)"""
+        text_lower = text.lower()
+        return any(kw.lower() in text_lower or kw in text for kw in POLICE_KEYWORDS)
+    
+    def _detect_event_type(self, text: str) -> str:
+        """Detect event type based on keywords. Returns event_type string."""
+        text_lower = text.lower()
+        
+        # Police presence detection (PPU) - check first as it's specific
+        police_count = sum(1 for kw in POLICE_KEYWORDS if kw.lower() in text_lower or kw in text)
+        if police_count >= 2:  # Strong police presence signal
+            return "police_presence"
+        
+        # Strike detection
+        strike_keywords = ["اعتصاب", "strike", "walkout", "تعطیل", "shutdown"]
+        if any(kw.lower() in text_lower or kw in text for kw in strike_keywords):
+            return "strike"
+        
+        # Clash detection
+        clash_keywords = ["درگیری", "clash", "fight", "violence", "خشونت", "زد و خورد"]
+        if any(kw.lower() in text_lower or kw in text for kw in clash_keywords):
+            return "clash"
+        
+        # Arrest detection
+        arrest_keywords = ["بازداشت", "arrest", "detained", "دستگیر", "زندان", "prison"]
+        if any(kw.lower() in text_lower or kw in text for kw in arrest_keywords):
+            return "arrest"
+        
+        # Default to protest
+        return "protest"
+    
+    def _calculate_police_intensity(self, text: str) -> float:
+        """Calculate police presence intensity (1-5 scale normalized to 0-1)"""
+        text_lower = text.lower()
+        
+        # High intensity keywords
+        high_intensity = ["یگان ویژه", "riot police", "heavy presence", "محاصره", 
+                         "surrounded", "raid", "یورش", "حمله"]
+        # Medium intensity keywords  
+        medium_intensity = ["گشت", "patrol", "checkpoint", "ایست بازرسی", "deployed"]
+        
+        score = 0.3  # Base score
+        
+        if any(kw.lower() in text_lower or kw in text for kw in high_intensity):
+            score = 0.9
+        elif any(kw.lower() in text_lower or kw in text for kw in medium_intensity):
+            score = 0.6
+        
+        # Add based on keyword density
+        matches = sum(1 for kw in POLICE_KEYWORDS if kw.lower() in text_lower or kw in text)
+        score = min(score + (matches * 0.1), 1.0)
+        
+        return score
 
 
 class RSSSource(DataSource):
@@ -647,43 +772,401 @@ class TelegramSource(DataSource):
         return events
 
 
+class RedditSource(DataSource):
+    """Fetch posts from Reddit subreddits via public JSON API"""
+    source_type = "reddit"
+    source_platform = "reddit"
+    
+    def __init__(self, subreddits: List[str] = None):
+        self.subreddits = subreddits or REDDIT_SUBREDDITS
+    
+    def fetch_events(self) -> List[schemas.ProtestEventCreate]:
+        events = []
+        
+        for subreddit in self.subreddits:
+            try:
+                # Use Reddit's public JSON API (no auth required for public subreddits)
+                url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=25"
+                resp = requests.get(url, timeout=10, headers={
+                    'User-Agent': 'IranProtestMap/1.0 (Educational Research)'
+                })
+                
+                if resp.status_code != 200:
+                    print(f"    r/{subreddit}: HTTP {resp.status_code}")
+                    continue
+                
+                data = resp.json()
+                posts = data.get('data', {}).get('children', [])
+                
+                subreddit_events = 0
+                for post in posts:
+                    post_data = post.get('data', {})
+                    title = post_data.get('title', '')
+                    selftext = post_data.get('selftext', '')
+                    full_text = f"{title} {selftext}"
+                    
+                    # Filter for Iran/protest content
+                    has_iran = 'iran' in full_text.lower() or 'ایران' in full_text
+                    has_protest = self._is_protest_related(full_text)
+                    has_police = self._is_police_related(full_text)
+                    
+                    if not (has_iran and (has_protest or has_police)):
+                        continue
+                    
+                    location = self._extract_location(full_text)
+                    if not location:
+                        location = ("Iran (Reddit)", 
+                                   35.6892 + random.uniform(-0.2, 0.2), 
+                                   51.3890 + random.uniform(-0.2, 0.2),
+                                   False)
+                    
+                    city_name, lat, lon, is_diaspora = location
+                    
+                    # Parse timestamp
+                    created_utc = post_data.get('created_utc', 0)
+                    timestamp = datetime.fromtimestamp(created_utc, tz=timezone.utc) if created_utc else datetime.now(timezone.utc)
+                    
+                    # Detect event type
+                    event_type = self._detect_event_type(full_text)
+                    intensity = self._calculate_police_intensity(full_text) if event_type == "police_presence" else self._calculate_intensity(full_text)
+                    
+                    # Get media if available
+                    media_url = None
+                    media_type = None
+                    if post_data.get('is_video'):
+                        media_type = 'video_thumb'
+                        media_url = post_data.get('thumbnail')
+                    elif post_data.get('post_hint') == 'image':
+                        media_type = 'image'
+                        media_url = post_data.get('url')
+                    
+                    source_url = f"https://reddit.com{post_data.get('permalink', '')}"
+                    
+                    # Add PPU indicator for police presence
+                    if event_type == "police_presence":
+                        title_prefix = f"[Reddit] 🚨 PPU: "
+                    else:
+                        title_prefix = f"[Reddit r/{subreddit}] "
+                    
+                    events.append(schemas.ProtestEventCreate(
+                        title=f"{title_prefix}{title[:120]}",
+                        description=selftext[:500] if selftext else "",
+                        latitude=lat + random.uniform(-0.02, 0.02),
+                        longitude=lon + random.uniform(-0.02, 0.02),
+                        intensity_score=intensity,
+                        verified=False,
+                        timestamp=timestamp,
+                        source_url=source_url,
+                        media_url=media_url,
+                        media_type=media_type,
+                        event_type=event_type,
+                        source_platform="reddit"
+                    ))
+                    subreddit_events += 1
+                
+                if subreddit_events > 0:
+                    print(f"    r/{subreddit}: {subreddit_events} events")
+                    
+            except Exception as e:
+                print(f"    r/{subreddit}: Error - {str(e)[:40]}")
+                continue
+        
+        return events
+
+
+class InstagramSource(DataSource):
+    """Fetch posts from Instagram public profiles"""
+    source_type = "instagram"
+    source_platform = "instagram"
+    
+    def __init__(self, accounts: List[str] = None):
+        self.accounts = accounts or INSTAGRAM_ACCOUNTS
+    
+    def fetch_events(self) -> List[schemas.ProtestEventCreate]:
+        events = []
+        
+        for account in self.accounts:
+            try:
+                # Try to fetch via Instagram's public web interface
+                # Note: Instagram heavily rate-limits and blocks scraping
+                # This is a best-effort approach
+                url = f"https://www.instagram.com/{account}/?__a=1&__d=dis"
+                resp = requests.get(url, timeout=10, headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                })
+                
+                if resp.status_code != 200:
+                    # Try alternative: public profile page scraping
+                    url = f"https://www.instagram.com/{account}/"
+                    resp = requests.get(url, timeout=10, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    })
+                    
+                    if resp.status_code != 200:
+                        continue
+                    
+                    # Parse HTML for shared data
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    scripts = soup.find_all('script', type='application/ld+json')
+                    
+                    for script in scripts:
+                        try:
+                            import json
+                            data = json.loads(script.string)
+                            if '@type' in data and data['@type'] == 'ProfilePage':
+                                # Found profile, but Instagram limits what we can get
+                                print(f"    @{account}: Found profile (limited data)")
+                        except:
+                            continue
+                    continue
+                
+                # If we got JSON response
+                try:
+                    data = resp.json()
+                    user_data = data.get('graphql', {}).get('user', {})
+                    media = user_data.get('edge_owner_to_timeline_media', {}).get('edges', [])
+                    
+                    account_events = 0
+                    for edge in media[:10]:
+                        node = edge.get('node', {})
+                        caption_edges = node.get('edge_media_to_caption', {}).get('edges', [])
+                        caption = caption_edges[0].get('node', {}).get('text', '') if caption_edges else ''
+                        
+                        # Filter for Iran/protest content
+                        has_iran = 'iran' in caption.lower() or 'ایران' in caption
+                        has_protest = self._is_protest_related(caption)
+                        has_police = self._is_police_related(caption)
+                        
+                        if not (has_iran and (has_protest or has_police)):
+                            continue
+                        
+                        location = self._extract_location(caption)
+                        if not location:
+                            location = ("Iran (Instagram)", 
+                                       35.6892 + random.uniform(-0.2, 0.2), 
+                                       51.3890 + random.uniform(-0.2, 0.2),
+                                       False)
+                        
+                        city_name, lat, lon, is_diaspora = location
+                        
+                        timestamp_unix = node.get('taken_at_timestamp', 0)
+                        timestamp = datetime.fromtimestamp(timestamp_unix, tz=timezone.utc) if timestamp_unix else datetime.now(timezone.utc)
+                        
+                        event_type = self._detect_event_type(caption)
+                        intensity = self._calculate_police_intensity(caption) if event_type == "police_presence" else self._calculate_intensity(caption)
+                        
+                        media_url = node.get('display_url')
+                        media_type = 'video' if node.get('is_video') else 'image'
+                        source_url = f"https://www.instagram.com/p/{node.get('shortcode', '')}/"
+                        
+                        title_prefix = "🚨 PPU: " if event_type == "police_presence" else ""
+                        
+                        events.append(schemas.ProtestEventCreate(
+                            title=f"[IG @{account}] {title_prefix}{caption[:100]}...",
+                            description=caption[:500],
+                            latitude=lat + random.uniform(-0.02, 0.02),
+                            longitude=lon + random.uniform(-0.02, 0.02),
+                            intensity_score=intensity,
+                            verified=False,
+                            timestamp=timestamp,
+                            source_url=source_url,
+                            media_url=media_url,
+                            media_type=media_type,
+                            event_type=event_type,
+                            source_platform="instagram"
+                        ))
+                        account_events += 1
+                    
+                    if account_events > 0:
+                        print(f"    @{account}: {account_events} events")
+                        
+                except Exception as e:
+                    print(f"    @{account}: JSON parse error - {str(e)[:30]}")
+                    continue
+                    
+            except Exception as e:
+                print(f"    @{account}: Error - {str(e)[:40]}")
+                continue
+        
+        return events
+
+
+class YouTubeSource(DataSource):
+    """Fetch videos from YouTube channels via RSS feeds"""
+    source_type = "youtube"
+    source_platform = "youtube"
+    
+    def __init__(self, channels: Dict = None):
+        self.channels = channels or YOUTUBE_CHANNELS
+    
+    def fetch_events(self) -> List[schemas.ProtestEventCreate]:
+        events = []
+        
+        for channel_id, channel_config in self.channels.items():
+            youtube_channel_id = channel_config["channel_id"]
+            channel_name = channel_config["name"]
+            reliability = channel_config.get("reliability", 0.5)
+            
+            try:
+                # YouTube provides RSS feeds for channels
+                url = f"https://www.youtube.com/feeds/videos.xml?channel_id={youtube_channel_id}"
+                feed = feedparser.parse(url)
+                
+                channel_events = 0
+                for entry in feed.entries[:15]:
+                    title = entry.get('title', '')
+                    summary = entry.get('summary', entry.get('description', ''))
+                    full_text = f"{title} {summary}"
+                    
+                    # Filter for Iran/protest content
+                    has_iran = 'iran' in full_text.lower() or 'ایران' in full_text
+                    has_protest = self._is_protest_related(full_text)
+                    has_police = self._is_police_related(full_text)
+                    
+                    if not (has_iran and (has_protest or has_police)):
+                        continue
+                    
+                    location = self._extract_location(full_text)
+                    if not location:
+                        location = ("Iran (YouTube)", 
+                                   35.6892 + random.uniform(-0.15, 0.15), 
+                                   51.3890 + random.uniform(-0.15, 0.15),
+                                   False)
+                    
+                    city_name, lat, lon, is_diaspora = location
+                    
+                    try:
+                        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                            timestamp = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                        else:
+                            timestamp = datetime.now(timezone.utc)
+                    except:
+                        timestamp = datetime.now(timezone.utc)
+                    
+                    event_type = self._detect_event_type(full_text)
+                    intensity = self._calculate_police_intensity(full_text) if event_type == "police_presence" else self._calculate_intensity(full_text)
+                    
+                    source_url = entry.get('link', '')
+                    
+                    # Get video thumbnail
+                    media_url = None
+                    video_id = None
+                    if 'yt_videoid' in entry:
+                        video_id = entry.yt_videoid
+                    elif '/watch?v=' in source_url:
+                        video_id = source_url.split('/watch?v=')[-1].split('&')[0]
+                    
+                    if video_id:
+                        media_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+                    
+                    title_prefix = "🚨 PPU: " if event_type == "police_presence" else ""
+                    
+                    events.append(schemas.ProtestEventCreate(
+                        title=f"[YT {channel_name}] {title_prefix}{title[:120]}",
+                        description=summary[:500] if summary else "",
+                        latitude=lat + random.uniform(-0.02, 0.02),
+                        longitude=lon + random.uniform(-0.02, 0.02),
+                        intensity_score=intensity,
+                        verified=(reliability >= 0.85),  # High reliability channels = verified
+                        timestamp=timestamp,
+                        source_url=source_url,
+                        media_url=media_url,
+                        media_type='video_thumb',
+                        event_type=event_type,
+                        source_platform="youtube"
+                    ))
+                    channel_events += 1
+                
+                if channel_events > 0:
+                    print(f"    {channel_name}: {channel_events} events")
+                    
+            except Exception as e:
+                print(f"    {channel_name}: Error - {str(e)[:40]}")
+                continue
+        
+        return events
+
+
 class IngestionService:
     def __init__(self, db: Session):
         self.db = db
 
-    def run_ingestion(self):
-        """Run ingestion from all sources"""
+    def run_ingestion(self, source_type: str = "all"):
+        """Run ingestion from all or specific sources
+        
+        Args:
+            source_type: 'all', 'rss', 'twitter', 'telegram', 'reddit', 'instagram', 'youtube'
+        """
         all_events = []
         
         # 1. RSS News Sources (most reliable)
-        print("Fetching from RSS feeds...")
-        rss_source = RSSSource()
-        rss_events = rss_source.fetch_events()
-        all_events.extend(rss_events)
-        print(f"  -> {len(rss_events)} events from RSS")
+        if source_type in ("all", "rss"):
+            print("Fetching from RSS feeds...")
+            rss_source = RSSSource()
+            rss_events = rss_source.fetch_events()
+            all_events.extend(rss_events)
+            print(f"  -> {len(rss_events)} events from RSS")
         
         # 2. Twitter/X via Nitter
-        print("Fetching from Twitter/Nitter...")
-        try:
-            twitter_source = TwitterSource()
-            twitter_events = twitter_source.fetch_events()
-            all_events.extend(twitter_events)
-            print(f"  -> {len(twitter_events)} events from Twitter")
-        except Exception as e:
-            print(f"  -> Twitter fetch failed: {e}")
+        if source_type in ("all", "twitter"):
+            print("Fetching from Twitter/Nitter...")
+            try:
+                twitter_source = TwitterSource()
+                twitter_events = twitter_source.fetch_events()
+                all_events.extend(twitter_events)
+                print(f"  -> {len(twitter_events)} events from Twitter")
+            except Exception as e:
+                print(f"  -> Twitter fetch failed: {e}")
         
         # 3. Telegram public channels
-        print("Fetching from Telegram...")
-        try:
-            telegram_source = TelegramSource()
-            telegram_events = telegram_source.fetch_events()
-            all_events.extend(telegram_events)
-            print(f"  -> {len(telegram_events)} events from Telegram")
-        except Exception as e:
-            print(f"  -> Telegram fetch failed: {e}")
+        if source_type in ("all", "telegram"):
+            print("Fetching from Telegram...")
+            try:
+                telegram_source = TelegramSource()
+                telegram_events = telegram_source.fetch_events()
+                all_events.extend(telegram_events)
+                print(f"  -> {len(telegram_events)} events from Telegram")
+            except Exception as e:
+                print(f"  -> Telegram fetch failed: {e}")
+        
+        # 4. Reddit subreddits
+        if source_type in ("all", "reddit"):
+            print("Fetching from Reddit...")
+            try:
+                reddit_source = RedditSource()
+                reddit_events = reddit_source.fetch_events()
+                all_events.extend(reddit_events)
+                print(f"  -> {len(reddit_events)} events from Reddit")
+            except Exception as e:
+                print(f"  -> Reddit fetch failed: {e}")
+        
+        # 5. Instagram profiles
+        if source_type in ("all", "instagram"):
+            print("Fetching from Instagram...")
+            try:
+                instagram_source = InstagramSource()
+                instagram_events = instagram_source.fetch_events()
+                all_events.extend(instagram_events)
+                print(f"  -> {len(instagram_events)} events from Instagram")
+            except Exception as e:
+                print(f"  -> Instagram fetch failed: {e}")
+        
+        # 6. YouTube channels
+        if source_type in ("all", "youtube"):
+            print("Fetching from YouTube...")
+            try:
+                youtube_source = YouTubeSource()
+                youtube_events = youtube_source.fetch_events()
+                all_events.extend(youtube_events)
+                print(f"  -> {len(youtube_events)} events from YouTube")
+            except Exception as e:
+                print(f"  -> YouTube fetch failed: {e}")
         
         # Save to DB (with duplicate checking)
         count = 0
+        police_count = 0
         for event_data in all_events:
             # Check for duplicates by title
             existing = self.db.query(models.ProtestEvent).filter(
@@ -704,11 +1187,15 @@ class IngestionService:
                 timestamp=event_data.timestamp,
                 source_url=event_data.source_url,
                 media_url=event_data.media_url,
-                media_type=event_data.media_type
+                media_type=event_data.media_type,
+                event_type=event_data.event_type or "protest",
+                source_platform=event_data.source_platform
             )
             self.db.add(db_event)
             count += 1
+            if event_data.event_type == "police_presence":
+                police_count += 1
         
         self.db.commit()
-        print(f"Total new events saved: {count}")
+        print(f"Total new events saved: {count} (including {police_count} PPU alerts)")
         return count

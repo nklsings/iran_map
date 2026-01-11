@@ -1,13 +1,13 @@
-# Docker Compose - Default Configuration
-# For local development, use: docker-compose -f docker-compose.local.yml up -d
+# Docker Compose for Local Development
+# Usage: docker-compose -f docker-compose.local.yml up -d
 #
-# Quick start:
-#   docker-compose up -d
-#   Frontend: http://localhost:3001
-#   Backend:  http://localhost:8000
-#   Database: localhost:5432
+# Services:
+#   - db: PostgreSQL with PostGIS (port 5432)
+#   - backend: FastAPI server (port 8000)
+#   - frontend: Next.js dev server (port 3000)
 
 services:
+  # PostgreSQL with PostGIS extension
   db:
     image: postgis/postgis:15-3.3
     container_name: iran_map_db
@@ -18,7 +18,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - iran_map_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d iran_map"]
       interval: 5s
@@ -26,12 +26,14 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # FastAPI Backend
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: iran_map_backend
     volumes:
+      # Mount source code for hot reload
       - ./backend:/app
     ports:
       - "8000:8000"
@@ -42,20 +44,24 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Use reload for development
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
+  # Next.js Frontend
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
     container_name: iran_map_frontend
     volumes:
+      # Mount source code for hot reload
       - .:/app
+      # Exclude node_modules and .next from mount (use container's versions)
       - /app/node_modules
       - /app/.next
     ports:
-      - "3001:3000"
+      - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - WATCHPACK_POLLING=true
@@ -65,4 +71,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  iran_map_postgres_data:
+    name: iran_map_postgres_data
+

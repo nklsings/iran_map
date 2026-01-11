@@ -10,14 +10,53 @@ import {
   Languages,
   ExternalLink,
   Loader2,
+  AlertTriangle,
+  Siren,
 } from 'lucide-react';
-import { ProtestEvent } from '../lib/types';
+import { ProtestEvent, Stats, EventType } from '../lib/types';
 import { format } from 'date-fns';
+
+// Event type display configuration
+const EVENT_TYPE_CONFIG: Record<
+  EventType,
+  { label: string; emoji: string; color: string; bgColor: string }
+> = {
+  protest: {
+    label: 'Protest',
+    emoji: '✊',
+    color: 'text-red-400',
+    bgColor: 'bg-red-600',
+  },
+  police_presence: {
+    label: 'Police Presence',
+    emoji: '🚨',
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-600',
+  },
+  clash: {
+    label: 'Clash',
+    emoji: '⚡',
+    color: 'text-orange-400',
+    bgColor: 'bg-orange-600',
+  },
+  arrest: {
+    label: 'Arrest',
+    emoji: '🔒',
+    color: 'text-purple-400',
+    bgColor: 'bg-purple-600',
+  },
+  strike: {
+    label: 'Strike',
+    emoji: '🛑',
+    color: 'text-yellow-400',
+    bgColor: 'bg-yellow-600',
+  },
+};
 
 interface SidebarProps {
   event: ProtestEvent | null;
   onClose: () => void;
-  stats: any;
+  stats: Stats | null;
 }
 
 export default function Sidebar({ event, onClose, stats }: SidebarProps) {
@@ -118,12 +157,20 @@ export default function Sidebar({ event, onClose, stats }: SidebarProps) {
           </div>
         </h1>
 
-        {/* Desktop full stats / Mobile expanded details could go here, but keeping it simple for now */}
-        <div className="hidden md:block space-y-4">
+        {/* Desktop full stats */}
+        <div className="hidden md:block space-y-3">
           <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-            <span className="text-gray-400 text-sm">Reports (12h)</span>
+            <span className="text-gray-400 text-sm">Total Reports</span>
             <span className="text-xl font-mono text-red-500">
               {stats?.total_reports || 0}
+            </span>
+          </div>
+          <div className="flex justify-between items-center border-b border-gray-800 pb-2">
+            <span className="text-gray-400 text-sm flex items-center gap-1">
+              <Siren size={14} className="text-blue-400" /> PPU Alerts
+            </span>
+            <span className="text-xl font-mono text-blue-400">
+              {stats?.police_presence || 0}
             </span>
           </div>
           <div className="flex justify-between items-center border-b border-gray-800 pb-2">
@@ -132,15 +179,47 @@ export default function Sidebar({ event, onClose, stats }: SidebarProps) {
               {stats?.verified_incidents || 0}
             </span>
           </div>
-          <p className="text-xs text-gray-500 mt-4">
-            Live intelligence map. Red = unverified. White = verified. Click any
-            point for details.
+
+          {/* Event type breakdown */}
+          <div className="grid grid-cols-2 gap-2 text-xs mt-3">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-red-500"></span>
+              <span className="text-gray-500">Protests:</span>
+              <span className="text-gray-300 ml-auto">
+                {stats?.protests || 0}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+              <span className="text-gray-500">Clashes:</span>
+              <span className="text-gray-300 ml-auto">
+                {stats?.clashes || 0}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+              <span className="text-gray-500">Arrests:</span>
+              <span className="text-gray-300 ml-auto">
+                {stats?.arrests || 0}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+              <span className="text-gray-500">Police:</span>
+              <span className="text-gray-300 ml-auto">
+                {stats?.police_presence || 0}
+              </span>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 mt-3">
+            🔴 Red = Protest • 🔵 Blue = Police (PPU) • ⚪ White = Verified
           </p>
         </div>
 
         {/* Mobile simplified hint */}
         <div className="md:hidden text-xs text-gray-500 mt-1">
-          Tap points for details. Red: Unverified, White: Verified.
+          🔴 Protest • 🔵 Police (PPU) • ⚪ Verified. Tap for details.
         </div>
       </div>
     );
@@ -155,8 +234,20 @@ export default function Sidebar({ event, onClose, stats }: SidebarProps) {
       ? translatedDesc
       : event.properties.description;
 
+  // Determine border color based on event type
+  const eventType = event.properties.event_type || 'protest';
+  const borderColorClass =
+    eventType === 'police_presence'
+      ? 'border-blue-600'
+      : eventType === 'clash'
+      ? 'border-orange-600'
+      : eventType === 'arrest'
+      ? 'border-purple-600'
+      : 'border-red-600';
+
   return (
-    <div className="absolute inset-x-0 bottom-0 md:top-4 md:bottom-auto md:right-4 md:left-auto md:w-96 z-20 bg-zinc-950 text-white border-t-4 md:border-t-0 md:border-r-4 border-red-600 shadow-2xl max-h-[80vh] md:h-[calc(100vh-2rem)] overflow-y-auto rounded-t-xl md:rounded-xl md:rounded-r-none transition-transform duration-300 ease-in-out">
+    <div
+      className={`absolute inset-x-0 bottom-0 md:top-4 md:bottom-auto md:right-4 md:left-auto md:w-96 z-20 bg-zinc-950 text-white border-t-4 md:border-t-0 md:border-r-4 ${borderColorClass} shadow-2xl max-h-[80vh] md:h-[calc(100vh-2rem)] overflow-y-auto rounded-t-xl md:rounded-xl md:rounded-r-none transition-transform duration-300 ease-in-out`}>
       <div className="p-4 md:p-6">
         {/* Close button - adjusted for mobile hit area */}
         <button
@@ -166,15 +257,30 @@ export default function Sidebar({ event, onClose, stats }: SidebarProps) {
         </button>
 
         <div className="flex items-center gap-2 mb-4 flex-wrap pr-8 md:pr-0">
+          {/* Event type badge */}
+          {(() => {
+            const eventType = event.properties.event_type || 'protest';
+            const config =
+              EVENT_TYPE_CONFIG[eventType] || EVENT_TYPE_CONFIG.protest;
+            return (
+              <span
+                className={`flex items-center gap-1 ${config.bgColor} text-white px-2 py-0.5 text-xs font-bold uppercase tracking-wider`}>
+                {config.emoji} {config.label}
+              </span>
+            );
+          })()}
+
+          {/* Verified badge */}
           {event.properties.verified ? (
             <span className="flex items-center gap-1 bg-white text-black px-2 py-0.5 text-xs font-bold uppercase tracking-wider">
               <Shield size={12} /> Verified
             </span>
           ) : (
-            <span className="flex items-center gap-1 bg-red-600 text-white px-2 py-0.5 text-xs font-bold uppercase tracking-wider">
+            <span className="flex items-center gap-1 bg-zinc-700 text-gray-300 px-2 py-0.5 text-xs font-medium uppercase tracking-wider">
               <ShieldAlert size={12} /> Unverified
             </span>
           )}
+
           <span className="text-gray-500 text-xs font-mono">
             ID: {event.properties.id}
           </span>
