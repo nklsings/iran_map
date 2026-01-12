@@ -41,8 +41,6 @@ services:
       DATABASE_URL: postgresql://postgres:password@db:5432/iran_map
       CRON_SECRET: dev_secret
       PYTHONUNBUFFERED: "1"
-      CHECKWX_API_KEY: "0aaf5dca480d4d13ab21b0be0e7337d4"
-      OPENAI_API_KEY: "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"
       OPENAI_MODEL: "gpt-4o-mini" # Can be changed to gpt-4o for better quality
       SUMMARY_INTERVAL_MINUTES: "60" # Generate summary every hour
       # ACLED API (register at https://acleddata.com/register/ for free academic access)
