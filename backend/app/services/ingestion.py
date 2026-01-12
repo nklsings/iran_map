@@ -358,6 +358,34 @@ RSS_FEEDS = {
         "name": "Amnesty International",
         "reliability": 0.95,
     },
+    # Iran Human Rights Organizations (NEW)
+    "iran_hr": {
+        "url": "https://iranhr.net/en/rss/",
+        "name": "Iran Human Rights",
+        "reliability": 0.95,
+        "source_category": "human_rights",
+    },
+    "hrana": {
+        "url": "https://www.en-hrana.org/feed/",
+        "name": "HRANA News Agency",
+        "reliability": 0.9,
+        "source_category": "human_rights",
+    },
+    "radio_zamaneh": {
+        "url": "https://www.radiozamaneh.com/feed/",
+        "name": "Radio Zamaneh",
+        "reliability": 0.85,
+    },
+    "radio_farda": {
+        "url": "https://www.radiofarda.com/api/z-pqpiev$qi",
+        "name": "Radio Farda",
+        "reliability": 0.9,
+    },
+    "iranwire": {
+        "url": "https://iranwire.com/en/feed/",
+        "name": "IranWire",
+        "reliability": 0.85,
+    },
     # OSINT / Verification Sources
     "geoconfirmed": {
         "url": "https://geoconfirmed.org/feed",
@@ -400,6 +428,11 @@ TWITTER_ACCOUNTS = [
     "GeoConfirmed",     # GeoConfirmed OSINT verification
     "MahsaAlert",       # MahsaAlert safety notifications
     "Aborsat_FactCh",   # FactNameh verification
+    # Human Rights Organizations (NEW)
+    "IranHrm",          # Iran Human Rights Monitor
+    "ABORSAT_eng",      # HRANA English
+    "IranHR_English",   # Iran Human Rights English
+    "KolsareNet",       # Kolsare Network
 ]
 
 # Nitter instances (public Twitter mirrors) - tested and working
@@ -438,6 +471,13 @@ TELEGRAM_CHANNELS = [
     "GeoConfirmed",         # GeoConfirmed OSINT
     "MahsaAlerts",          # MahsaAlert safety alerts
     "FactNameh",            # FactNameh verification
+    # Human Rights (NEW)
+    "HengawO",              # Hengaw Human Rights - Kurdish focus
+    "1500tasvir",           # 1500Tasvir - Video verification / citizen journalism
+    "HranaEnglish",         # HRANA English
+    "IranHumanRights",      # Iran Human Rights org
+    "KolsareNetwork",       # Kolsare Network - protests
+    "shaaborsat",           # Activist coverage
 ]
 
 

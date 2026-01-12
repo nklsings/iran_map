@@ -107,6 +107,24 @@ def run_initial_ingestion():
             osint_results = fetch_osint_data(db)
             print(f"✓ OSINT fetch complete: {osint_results['total']} events")
             
+            # Fetch ACLED data (if configured)
+            from .services.acled import fetch_acled_data
+            print("📊 Fetching ACLED conflict data...")
+            acled_count = fetch_acled_data(db, days=30)
+            print(f"✓ ACLED fetch complete: {acled_count} events")
+            
+            # Fetch Telegram feed
+            from .services.telegram_feed import fetch_telegram_feed
+            print("📡 Fetching Telegram live feed...")
+            telegram_count = fetch_telegram_feed(db)
+            print(f"✓ Telegram fetch complete: {telegram_count} messages")
+            
+            # Update city analytics
+            from .services.city_analytics import update_analytics
+            print("🏙️ Computing city analytics...")
+            analytics_count = update_analytics(db)
+            print(f"✓ Analytics updated for {analytics_count} cities")
+            
             # Generate initial summary if none exists
             from .services.summary import generate_hourly_summary
             summary_count = db.query(models.SituationSummary).count()
@@ -138,6 +156,41 @@ def run_scheduled_summary():
             db.close()
     except Exception as e:
         print(f"✗ Summary generation failed: {e}")
+
+
+def run_scheduled_telegram_feed():
+    """Background task to fetch Telegram live feed"""
+    print(f"\n📡 Fetching Telegram feed at {datetime.now(timezone.utc).isoformat()}")
+    
+    try:
+        db = next(database.get_db())
+        try:
+            from .services.telegram_feed import fetch_telegram_feed
+            count = fetch_telegram_feed(db)
+            if count > 0:
+                print(f"✓ Telegram feed: {count} new messages")
+            else:
+                print("✓ Telegram feed: no new messages")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"✗ Telegram feed failed: {e}")
+
+
+def run_scheduled_analytics():
+    """Background task to update city analytics"""
+    print(f"\n🏙️ Updating analytics at {datetime.now(timezone.utc).isoformat()}")
+    
+    try:
+        db = next(database.get_db())
+        try:
+            from .services.city_analytics import update_analytics
+            count = update_analytics(db)
+            print(f"✓ Analytics updated: {count} cities")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"✗ Analytics update failed: {e}")
 
 app = FastAPI(title="Iran Protest Heatmap API")
 
@@ -275,6 +328,88 @@ def run_schema_migrations(conn):
             END IF;
         END $$;
         """,
+        # Create telegram_messages table
+        """
+        CREATE TABLE IF NOT EXISTS telegram_messages (
+            id SERIAL PRIMARY KEY,
+            channel VARCHAR(255) NOT NULL,
+            message_id VARCHAR(255) UNIQUE NOT NULL,
+            text TEXT NOT NULL,
+            text_translated TEXT,
+            media_url VARCHAR(500),
+            media_type VARCHAR(50),
+            timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            sentiment VARCHAR(50),
+            keywords TEXT,
+            locations_mentioned TEXT,
+            event_type_detected VARCHAR(50),
+            urgency_score DOUBLE PRECISION DEFAULT 0.5,
+            linked_event_id INTEGER REFERENCES protest_events(id),
+            is_processed BOOLEAN DEFAULT FALSE,
+            is_relevant BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        """,
+        # Create indexes on telegram_messages
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes WHERE indexname = 'idx_telegram_messages_channel'
+            ) THEN
+                CREATE INDEX idx_telegram_messages_channel ON telegram_messages(channel);
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes WHERE indexname = 'idx_telegram_messages_timestamp'
+            ) THEN
+                CREATE INDEX idx_telegram_messages_timestamp ON telegram_messages(timestamp);
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes WHERE indexname = 'idx_telegram_messages_urgency'
+            ) THEN
+                CREATE INDEX idx_telegram_messages_urgency ON telegram_messages(urgency_score);
+            END IF;
+        END $$;
+        """,
+        # Create city_statistics table
+        """
+        CREATE TABLE IF NOT EXISTS city_statistics (
+            id SERIAL PRIMARY KEY,
+            city_name VARCHAR(255) NOT NULL,
+            city_name_fa VARCHAR(255),
+            latitude DOUBLE PRECISION NOT NULL,
+            longitude DOUBLE PRECISION NOT NULL,
+            province VARCHAR(255),
+            total_events INTEGER DEFAULT 0,
+            protest_count INTEGER DEFAULT 0,
+            clash_count INTEGER DEFAULT 0,
+            arrest_count INTEGER DEFAULT 0,
+            police_count INTEGER DEFAULT 0,
+            strike_count INTEGER DEFAULT 0,
+            events_24h INTEGER DEFAULT 0,
+            events_7d INTEGER DEFAULT 0,
+            trend_direction VARCHAR(50) DEFAULT 'stable',
+            trend_percentage DOUBLE PRECISION DEFAULT 0.0,
+            hourly_pattern TEXT,
+            peak_hour INTEGER,
+            avg_daily_events DOUBLE PRECISION DEFAULT 0.0,
+            activity_level VARCHAR(50) DEFAULT 'low',
+            period_start TIMESTAMP WITH TIME ZONE,
+            period_end TIMESTAMP WITH TIME ZONE,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        """,
+        # Create index on city_statistics
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes WHERE indexname = 'idx_city_statistics_city_name'
+            ) THEN
+                CREATE INDEX idx_city_statistics_city_name ON city_statistics(city_name);
+            END IF;
+        END $$;
+        """,
     ]
     
     for migration in migrations:
@@ -354,6 +489,26 @@ async def startup_event():
             replace_existing=True
         )
         print(f"📝 Auto-summary enabled (every {SUMMARY_INTERVAL_MINUTES} minutes)")
+        
+        # Schedule Telegram feed updates (every 10 minutes)
+        scheduler.add_job(
+            run_scheduled_telegram_feed,
+            trigger=IntervalTrigger(minutes=10),
+            id='scheduled_telegram_feed',
+            name='Telegram feed update',
+            replace_existing=True
+        )
+        print(f"📡 Telegram feed enabled (every 10 minutes)")
+        
+        # Schedule city analytics update (every 30 minutes)
+        scheduler.add_job(
+            run_scheduled_analytics,
+            trigger=IntervalTrigger(minutes=30),
+            id='scheduled_analytics',
+            name='City analytics update',
+            replace_existing=True
+        )
+        print(f"🏙️ Analytics update enabled (every 30 minutes)")
         
         scheduler.start()
         print("✓ Scheduler started")
@@ -1388,5 +1543,345 @@ def get_national_connectivity():
         },
         "provinces_by_status": status_counts,
         "total_provinces": len(provinces),
+    }
+
+
+# ============================================================================
+# TELEGRAM LIVE FEED ENDPOINTS
+# ============================================================================
+from .services.telegram_feed import TelegramFeedService, fetch_telegram_feed
+
+
+@app.get("/api/telegram/feed")
+def get_telegram_feed(
+    limit: int = 50,
+    offset: int = 0,
+    channel: str = None,
+    min_urgency: float = 0.0,
+    relevant_only: bool = True,
+    hours: int = 24,
+    db: Session = Depends(get_db)
+):
+    """
+    Get Telegram live feed with NLP analysis.
+    
+    - **limit**: Maximum messages to return (default: 50)
+    - **offset**: Pagination offset
+    - **channel**: Filter by channel (e.g., 'HengawO', '1500tasvir')
+    - **min_urgency**: Minimum urgency score 0-1 (default: 0, returns all)
+    - **relevant_only**: Only return protest-relevant messages (default: true)
+    - **hours**: Limit to messages from last N hours (default: 24)
+    """
+    service = TelegramFeedService(db)
+    messages, total = service.get_feed(
+        limit=limit,
+        offset=offset,
+        channel=channel,
+        min_urgency=min_urgency,
+        relevant_only=relevant_only,
+        hours=hours
+    )
+    
+    # Format for response
+    formatted = []
+    for msg in messages:
+        formatted.append({
+            "id": msg.id,
+            "channel": msg.channel,
+            "message_id": msg.message_id,
+            "text": msg.text,
+            "text_translated": msg.text_translated,
+            "media_url": msg.media_url,
+            "media_type": msg.media_type,
+            "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
+            "sentiment": msg.sentiment,
+            "keywords": msg.keywords,
+            "locations_mentioned": msg.locations_mentioned,
+            "event_type_detected": msg.event_type_detected,
+            "urgency_score": msg.urgency_score,
+            "is_relevant": msg.is_relevant,
+        })
+    
+    latest_ts = messages[0].timestamp if messages else None
+    
+    return {
+        "status": "success",
+        "messages": formatted,
+        "total_count": total,
+        "channels": service.get_channels(),
+        "latest_timestamp": latest_ts.isoformat() if latest_ts else None
+    }
+
+
+@app.get("/api/telegram/urgent")
+def get_urgent_messages(
+    threshold: float = 0.8,
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """
+    Get high-urgency Telegram messages from the last 12 hours.
+    
+    - **threshold**: Minimum urgency score (default: 0.8)
+    - **limit**: Maximum messages to return (default: 10)
+    """
+    service = TelegramFeedService(db)
+    messages = service.get_high_urgency(threshold=threshold, limit=limit)
+    
+    formatted = []
+    for msg in messages:
+        formatted.append({
+            "id": msg.id,
+            "channel": msg.channel,
+            "text": msg.text[:200] + "..." if len(msg.text) > 200 else msg.text,
+            "urgency_score": msg.urgency_score,
+            "event_type_detected": msg.event_type_detected,
+            "locations_mentioned": msg.locations_mentioned,
+            "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
+        })
+    
+    return {
+        "status": "success",
+        "count": len(formatted),
+        "threshold": threshold,
+        "messages": formatted
+    }
+
+
+@app.post("/api/telegram/refresh")
+def refresh_telegram_feed(
+    admin_key: str = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger Telegram feed refresh.
+    Fetches new messages from all monitored channels.
+    """
+    service = TelegramFeedService(db)
+    count = service.fetch_and_process_all()
+    
+    return {
+        "status": "success",
+        "message": f"Fetched {count} new messages",
+        "new_messages": count
+    }
+
+
+@app.get("/api/telegram/channels")
+def get_telegram_channels(db: Session = Depends(get_db)):
+    """Get list of monitored Telegram channels"""
+    from .services.telegram_feed import PRIORITY_CHANNELS
+    
+    service = TelegramFeedService(db)
+    active_channels = service.get_channels()
+    
+    channels = []
+    for config in PRIORITY_CHANNELS:
+        channels.append({
+            "channel": config["channel"],
+            "name": config["name"],
+            "category": config["category"],
+            "priority": config["priority"],
+            "has_messages": config["channel"] in active_channels
+        })
+    
+    return {
+        "status": "success",
+        "count": len(channels),
+        "channels": channels
+    }
+
+
+# ============================================================================
+# CITY ANALYTICS ENDPOINTS
+# ============================================================================
+from .services.city_analytics import CityAnalyticsService, update_analytics
+
+
+@app.get("/api/analytics/summary")
+def get_analytics_summary(db: Session = Depends(get_db)):
+    """
+    Get overall analytics summary.
+    
+    Returns:
+    - Total cities and events
+    - Most active city and hour
+    - Top cities ranking
+    - Hourly and event type distributions
+    """
+    service = CityAnalyticsService(db)
+    summary = service.get_analytics_summary()
+    
+    return {
+        "status": "success",
+        "summary": summary
+    }
+
+
+@app.get("/api/analytics/cities")
+def get_cities_analytics(
+    limit: int = 30,
+    db: Session = Depends(get_db)
+):
+    """
+    Get analytics for all cities with event data.
+    
+    - **limit**: Maximum cities to return (default: 30)
+    """
+    service = CityAnalyticsService(db)
+    cities = service.get_city_ranking(limit=limit)
+    
+    return {
+        "status": "success",
+        "count": len(cities),
+        "cities": cities
+    }
+
+
+@app.get("/api/analytics/city/{city_name}")
+def get_city_analytics(
+    city_name: str,
+    days: int = 30,
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed analytics for a specific city.
+    
+    - **city_name**: City name (e.g., 'Tehran', 'Isfahan', 'Sanandaj')
+    - **days**: Number of days to analyze (default: 30)
+    """
+    service = CityAnalyticsService(db)
+    stats = service.compute_city_stats(city_name, days=days)
+    
+    if not stats:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"City not found: {city_name}"
+        )
+    
+    return {
+        "status": "success",
+        "city": stats
+    }
+
+
+@app.get("/api/analytics/hourly")
+def get_hourly_analytics(
+    days: int = 7,
+    db: Session = Depends(get_db)
+):
+    """
+    Get hourly distribution of events.
+    
+    - **days**: Number of days to analyze (default: 7)
+    
+    Returns hour-by-hour event counts (0-23).
+    """
+    service = CityAnalyticsService(db)
+    hourly = service.get_hourly_distribution(days=days)
+    
+    # Find peak hour
+    peak_hour = max(hourly, key=hourly.get) if hourly else None
+    total = sum(hourly.values())
+    
+    return {
+        "status": "success",
+        "days_analyzed": days,
+        "total_events": total,
+        "peak_hour": peak_hour,
+        "peak_count": hourly.get(peak_hour, 0) if peak_hour is not None else 0,
+        "hourly": hourly
+    }
+
+
+@app.get("/api/analytics/trends")
+def get_trend_analytics(
+    days: int = 30,
+    db: Session = Depends(get_db)
+):
+    """
+    Get trend analysis for all cities.
+    
+    - **days**: Number of days to analyze (default: 30)
+    """
+    service = CityAnalyticsService(db)
+    cities = service.compute_all_cities(days=days)
+    
+    # Summarize trends
+    trending_up = [c for c in cities if c["trend_direction"] == "up"]
+    trending_down = [c for c in cities if c["trend_direction"] == "down"]
+    stable = [c for c in cities if c["trend_direction"] == "stable"]
+    
+    return {
+        "status": "success",
+        "summary": {
+            "trending_up": len(trending_up),
+            "trending_down": len(trending_down),
+            "stable": len(stable),
+        },
+        "top_trending": trending_up[:5] if trending_up else [],
+        "declining": trending_down[:5] if trending_down else [],
+    }
+
+
+@app.post("/api/analytics/refresh")
+def refresh_analytics(
+    admin_key: str = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually refresh city analytics.
+    Updates stored statistics for all cities.
+    """
+    service = CityAnalyticsService(db)
+    count = service.update_city_statistics()
+    
+    return {
+        "status": "success",
+        "message": f"Updated analytics for {count} cities",
+        "cities_updated": count
+    }
+
+
+# ============================================================================
+# ACLED DATA ENDPOINTS
+# ============================================================================
+from .services.acled import ACLEDService, fetch_acled_data
+
+
+@app.get("/api/acled/fetch")
+def fetch_acled_events(
+    days: int = 30,
+    db: Session = Depends(get_db)
+):
+    """
+    Fetch conflict events from ACLED (Armed Conflict Location & Event Data).
+    
+    - **days**: Number of days to look back (default: 30)
+    
+    Note: Requires ACLED_API_KEY and ACLED_EMAIL environment variables.
+    Register at: https://acleddata.com/register/
+    """
+    count = fetch_acled_data(db, days=days)
+    
+    return {
+        "status": "success",
+        "message": f"Fetched {count} ACLED events",
+        "events_stored": count,
+        "days_queried": days
+    }
+
+
+@app.get("/api/acled/status")
+def get_acled_status():
+    """Check if ACLED API is configured"""
+    api_key = os.getenv("ACLED_API_KEY")
+    email = os.getenv("ACLED_EMAIL")
+    
+    return {
+        "configured": bool(api_key and email),
+        "has_api_key": bool(api_key),
+        "has_email": bool(email),
+        "registration_url": "https://acleddata.com/register/"
     }
 

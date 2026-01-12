@@ -173,3 +173,121 @@ class SummaryResponse(BaseModel):
     generated_at: datetime
     model: str
 
+
+# ============================================================================
+# TELEGRAM MESSAGE SCHEMAS (Live Feed)
+# ============================================================================
+class TelegramMessageBase(BaseModel):
+    """Base schema for Telegram messages"""
+    channel: str
+    message_id: str
+    text: str
+    text_translated: Optional[str] = None
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
+    timestamp: datetime
+    
+    # NLP fields
+    sentiment: Optional[str] = None
+    keywords: Optional[str] = None  # JSON array
+    locations_mentioned: Optional[str] = None  # JSON array
+    event_type_detected: Optional[str] = None
+    urgency_score: float = 0.5
+
+
+class TelegramMessageCreate(TelegramMessageBase):
+    """Schema for creating Telegram messages"""
+    is_processed: bool = False
+    is_relevant: bool = True
+
+
+class TelegramMessage(TelegramMessageBase):
+    """Schema for Telegram message response"""
+    id: int
+    linked_event_id: Optional[int] = None
+    is_processed: bool
+    is_relevant: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class TelegramFeedResponse(BaseModel):
+    """Response for the Telegram feed"""
+    messages: List[TelegramMessage]
+    total_count: int
+    channels: List[str]
+    latest_timestamp: Optional[datetime] = None
+
+
+# ============================================================================
+# CITY ANALYTICS SCHEMAS
+# ============================================================================
+class CityStatisticsBase(BaseModel):
+    """Base schema for city statistics"""
+    city_name: str
+    city_name_fa: Optional[str] = None
+    latitude: float
+    longitude: float
+    province: Optional[str] = None
+    
+    # Event counts
+    total_events: int = 0
+    protest_count: int = 0
+    clash_count: int = 0
+    arrest_count: int = 0
+    police_count: int = 0
+    strike_count: int = 0
+    
+    # Trend data
+    events_24h: int = 0
+    events_7d: int = 0
+    trend_direction: str = "stable"
+    trend_percentage: float = 0.0
+    
+    # Activity
+    peak_hour: Optional[int] = None
+    avg_daily_events: float = 0.0
+    activity_level: str = "low"
+
+
+class CityStatistics(CityStatisticsBase):
+    """Schema for city statistics response"""
+    id: int
+    hourly_pattern: Optional[str] = None  # JSON
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class CityRanking(BaseModel):
+    """City ranking item for dashboard"""
+    rank: int
+    city_name: str
+    city_name_fa: Optional[str] = None
+    latitude: float
+    longitude: float
+    total_events: int
+    events_24h: int
+    trend_direction: str
+    trend_percentage: float
+    activity_level: str
+    top_event_type: Optional[str] = None
+
+
+class AnalyticsSummary(BaseModel):
+    """Overall analytics summary"""
+    total_cities: int
+    total_events: int
+    events_24h: int
+    events_7d: int
+    most_active_city: Optional[str] = None
+    most_active_hour: Optional[int] = None
+    top_cities: List[CityRanking]
+    hourly_distribution: dict  # {"0": count, "1": count, ...}
+    event_type_distribution: dict  # {"protest": count, "clash": count, ...}
+

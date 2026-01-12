@@ -146,35 +146,7 @@ export default function Map({
   };
 
   const layers = [
-    // Connectivity layer (render first, as background)
-    showConnectivity && connectivityData.length > 0 && new ScatterplotLayer({
-      id: 'connectivity-layer',
-      data: connectivityData,
-      pickable: true,
-      opacity: 0.7,
-      stroked: true,
-      filled: true,
-      radiusScale: 1,
-      radiusMinPixels: 15,
-      radiusMaxPixels: 50,
-      lineWidthMinPixels: 2,
-      getPosition: (d: ProvinceConnectivity) => d.geometry.coordinates,
-      getRadius: getConnectivityRadius,
-      getFillColor: getConnectivityFillColor,
-      getLineColor: getConnectivityLineColor,
-      getLineWidth: 2,
-      onClick: (info) => {
-        if (info.object && onConnectivityClick) {
-          onConnectivityClick(info.object as ProvinceConnectivity);
-        }
-      },
-      updateTriggers: {
-        getFillColor: connectivityData,
-        getLineColor: connectivityData,
-        getRadius: connectivityData
-      }
-    }),
-    // Airspace restrictions layer (render first, below events)
+    // Airspace restrictions layer (render first/bottom - below everything else)
     showAirspace && airspaceData.length > 0 && new PolygonLayer({
       id: 'airspace-layer',
       data: airspaceData.filter(d => d.geometry.type === 'Polygon'),
@@ -200,6 +172,34 @@ export default function Map({
       updateTriggers: {
         getFillColor: airspaceData,
         getLineColor: airspaceData
+      }
+    }),
+    // Connectivity layer (above airspace, clickable)
+    showConnectivity && connectivityData.length > 0 && new ScatterplotLayer({
+      id: 'connectivity-layer',
+      data: connectivityData,
+      pickable: true,
+      opacity: 0.85,
+      stroked: true,
+      filled: true,
+      radiusScale: 1,
+      radiusMinPixels: 18,
+      radiusMaxPixels: 55,
+      lineWidthMinPixels: 3,
+      getPosition: (d: ProvinceConnectivity) => d.geometry.coordinates,
+      getRadius: getConnectivityRadius,
+      getFillColor: getConnectivityFillColor,
+      getLineColor: getConnectivityLineColor,
+      getLineWidth: 3,
+      onClick: (info) => {
+        if (info.object && onConnectivityClick) {
+          onConnectivityClick(info.object as ProvinceConnectivity);
+        }
+      },
+      updateTriggers: {
+        getFillColor: connectivityData,
+        getLineColor: connectivityData,
+        getRadius: connectivityData
       }
     }),
     // Protest heatmap (red)

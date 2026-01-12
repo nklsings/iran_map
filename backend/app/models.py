@@ -146,3 +146,91 @@ class SituationSummary(Base):
     # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
+
+# ============================================================================
+# TELEGRAM MESSAGES (Live Feed with NLP)
+# ============================================================================
+class TelegramMessage(Base):
+    """Telegram messages from monitored channels with NLP analysis"""
+    __tablename__ = "telegram_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Message identification
+    channel = Column(String, index=True, nullable=False)
+    message_id = Column(String, unique=True, index=True)
+    
+    # Content
+    text = Column(Text, nullable=False)
+    text_translated = Column(Text, nullable=True)  # English translation
+    
+    # Media
+    media_url = Column(String, nullable=True)
+    media_type = Column(String, nullable=True)  # 'image', 'video', 'video_thumb'
+    
+    # Timestamp
+    timestamp = Column(DateTime(timezone=True), index=True, server_default=func.now())
+    
+    # NLP extracted fields
+    sentiment = Column(String, nullable=True)  # 'positive', 'negative', 'neutral'
+    keywords = Column(Text, nullable=True)  # JSON array of extracted keywords
+    locations_mentioned = Column(Text, nullable=True)  # JSON array of cities
+    event_type_detected = Column(String, nullable=True)  # protest, clash, arrest, etc.
+    urgency_score = Column(Float, default=0.5)  # 0-1, higher = more urgent
+    
+    # Linked event (if created as protest_event)
+    linked_event_id = Column(Integer, ForeignKey("protest_events.id"), nullable=True)
+    
+    # Processing status
+    is_processed = Column(Boolean, default=False)
+    is_relevant = Column(Boolean, default=True)  # False if filtered out as irrelevant
+    
+    # Metadata
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# ============================================================================
+# CITY ANALYTICS (Aggregated Statistics)
+# ============================================================================
+class CityStatistics(Base):
+    """Aggregated statistics for cities - updated periodically"""
+    __tablename__ = "city_statistics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # City identification
+    city_name = Column(String, index=True, nullable=False)
+    city_name_fa = Column(String, nullable=True)  # Persian name
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    province = Column(String, nullable=True)
+    
+    # Event counts (in current time window)
+    total_events = Column(Integer, default=0)
+    protest_count = Column(Integer, default=0)
+    clash_count = Column(Integer, default=0)
+    arrest_count = Column(Integer, default=0)
+    police_count = Column(Integer, default=0)
+    strike_count = Column(Integer, default=0)
+    
+    # Trend data
+    events_24h = Column(Integer, default=0)  # Events in last 24 hours
+    events_7d = Column(Integer, default=0)   # Events in last 7 days
+    trend_direction = Column(String, default="stable")  # 'up', 'down', 'stable'
+    trend_percentage = Column(Float, default=0.0)  # Percentage change
+    
+    # Hourly pattern (JSON: {"0": count, "1": count, ...})
+    hourly_pattern = Column(Text, nullable=True)
+    
+    # Peak activity
+    peak_hour = Column(Integer, nullable=True)  # 0-23
+    avg_daily_events = Column(Float, default=0.0)
+    
+    # Activity level
+    activity_level = Column(String, default="low")  # 'low', 'medium', 'high', 'critical'
+    
+    # Last update
+    period_start = Column(DateTime(timezone=True), nullable=True)
+    period_end = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+

@@ -3,8 +3,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import Map from '../components/Map';
 import Sidebar from '../components/Sidebar';
+import TelegramFeed from '../components/TelegramFeed';
 import { ProtestEvent, FeatureCollection, Stats, MEDIA_SOURCES, OSINT_SOURCES, OTHER_SOURCES, getEventSourceId, AirspaceEvent, AirspaceCollection, ProvinceConnectivity, ConnectivityCollection, CONNECTIVITY_STATUS_CONFIG } from '../lib/types';
-import { RefreshCw, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, Filter, ChevronDown, ChevronUp, Radio, BarChart3 } from 'lucide-react';
 
 type ViewMode = 'all' | 'verified' | 'ppu';
 
@@ -26,6 +27,7 @@ export default function Home() {
   const [connectivityData, setConnectivityData] = useState<ProvinceConnectivity[]>([]);
   const [nationalConnectivity, setNationalConnectivity] = useState<{score: number; status: string} | null>(null);
   const [selectedProvince, setSelectedProvince] = useState<ProvinceConnectivity | null>(null);
+  const [showTelegramFeed, setShowTelegramFeed] = useState(false);
   const [enabledSources, setEnabledSources] = useState<Record<string, boolean>>(() => {
     // Initialize from source definitions
     const initial: Record<string, boolean> = {};
@@ -167,8 +169,38 @@ export default function Home() {
         stats={stats}
       />
       
+      {/* Telegram Live Feed Panel */}
+      <TelegramFeed 
+        isOpen={showTelegramFeed}
+        onClose={() => setShowTelegramFeed(false)}
+      />
+      
       {/* Refresh Button - Top Right */}
       <div className="absolute top-4 right-4 md:right-[420px] z-20 flex items-center gap-2">
+        {/* Telegram Live Feed Toggle */}
+        <button
+          onClick={() => setShowTelegramFeed(!showTelegramFeed)}
+          className={`flex items-center gap-2 bg-zinc-900/90 backdrop-blur border px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+            showTelegramFeed 
+              ? 'border-blue-600 text-blue-400 hover:bg-blue-900/20' 
+              : 'border-zinc-700 text-white hover:bg-zinc-800'
+          }`}
+          title="Toggle Telegram Live Feed"
+        >
+          <Radio className={`w-4 h-4 ${showTelegramFeed ? 'animate-pulse' : ''}`} />
+          <span className="hidden md:inline">Feed</span>
+        </button>
+        
+        {/* Analytics Dashboard Link */}
+        <a
+          href="/analytics"
+          className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all text-white hover:bg-zinc-800 hover:border-purple-600 hover:text-purple-400"
+          title="View City Analytics"
+        >
+          <BarChart3 className="w-4 h-4" />
+          <span className="hidden md:inline">Analytics</span>
+        </a>
+        
         <button
           onClick={() => fetchData(true)}
           disabled={isRefreshing}
