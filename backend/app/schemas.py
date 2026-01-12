@@ -73,3 +73,103 @@ class AdminEventCreate(BaseModel):
     source_url: Optional[str] = None
     admin_key: str  # Required authentication
 
+
+# ============================================================================
+# AIRSPACE / NOTAM SCHEMAS
+# ============================================================================
+AirspaceType = Literal["airspace_restriction", "airport_closure", "hazard_notice", "temporary_restriction", "warning_area"]
+
+
+class AirspaceEventBase(BaseModel):
+    """Base schema for airspace events"""
+    ts_start: datetime
+    ts_end: Optional[datetime] = None
+    is_permanent: bool = False
+    center_lat: float
+    center_lon: float
+    radius_nm: Optional[float] = None
+    lower_limit: int = 0
+    upper_limit: int = 999
+    airspace_type: str = "airspace_restriction"
+    source: str = "notam"
+    notam_id: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    raw_text: Optional[str] = None
+    q_line: Optional[str] = None
+    fir: Optional[str] = None
+    notam_codes: Optional[str] = None
+
+
+class AirspaceEventCreate(AirspaceEventBase):
+    """Schema for creating airspace events"""
+    pass
+
+
+class AirspaceEvent(AirspaceEventBase):
+    """Schema for airspace event response"""
+    id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class AirspaceGeoJSON(BaseModel):
+    """GeoJSON feature for airspace"""
+    type: str = "Feature"
+    geometry: dict
+    properties: dict
+
+
+# ============================================================================
+# SITUATION SUMMARY SCHEMAS
+# ============================================================================
+class SituationSummaryBase(BaseModel):
+    """Base schema for situation summaries"""
+    title: str
+    summary: str
+    key_developments: Optional[str] = None  # JSON string of key points
+    hotspots: Optional[str] = None  # JSON string of active locations
+    risk_assessment: Optional[str] = None
+    event_count: int = 0
+    protest_count: int = 0
+    clash_count: int = 0
+    arrest_count: int = 0
+    police_count: int = 0
+    period_start: datetime
+    period_end: datetime
+    model_used: str = "gpt-4o-mini"
+
+
+class SituationSummaryCreate(SituationSummaryBase):
+    """Schema for creating situation summaries"""
+    tokens_used: Optional[int] = 0
+    generation_time_ms: Optional[int] = 0
+
+
+class SituationSummary(SituationSummaryBase):
+    """Schema for situation summary response"""
+    id: int
+    is_current: bool
+    tokens_used: int
+    generation_time_ms: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class SummaryResponse(BaseModel):
+    """Formatted response for the summary view"""
+    id: int
+    title: str
+    summary: str
+    key_developments: List[str]
+    hotspots: List[dict]
+    risk_assessment: str
+    stats: dict
+    period: dict
+    generated_at: datetime
+    model: str
+

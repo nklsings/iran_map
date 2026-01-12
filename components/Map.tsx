@@ -3,10 +3,10 @@
 import React, { useState, useMemo } from 'react';
 import DeckGL from '@deck.gl/react';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
-import { ScatterplotLayer } from '@deck.gl/layers';
+import { ScatterplotLayer, PolygonLayer } from '@deck.gl/layers';
 import { Map as ReactMap } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { ProtestEvent } from '../lib/types';
+import { ProtestEvent, AirspaceEvent, AirspaceType, ProvinceConnectivity, ConnectivityStatus, CONNECTIVITY_STATUS_CONFIG } from '../lib/types';
 
 const INITIAL_VIEW_STATE = {
   longitude: 53.6880,
@@ -16,7 +16,11 @@ const INITIAL_VIEW_STATE = {
   bearing: 0
 };
 
-const MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+// Map style options:
+// - dark-matter: Very dark (default CartoDB)
+// - alidade_smooth_dark: Slightly lighter dark gray (Stadia)
+// - dark-matter-nolabels: Dark without labels
+const MAP_STYLE = "https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json";
 
 // Color scheme for different event types
 const EVENT_COLORS = {
@@ -42,13 +46,47 @@ const EVENT_COLORS = {
   },
 };
 
+// Airspace colors by type
+const AIRSPACE_COLORS: Record<AirspaceType, { fill: [number, number, number, number]; line: [number, number, number] }> = {
+  airspace_restriction: { fill: [255, 68, 68, 80], line: [255, 68, 68] },
+  airport_closure: { fill: [255, 136, 0, 80], line: [255, 136, 0] },
+  hazard_notice: { fill: [255, 204, 0, 80], line: [255, 204, 0] },
+  temporary_restriction: { fill: [255, 0, 136, 80], line: [255, 0, 136] },
+  warning_area: { fill: [136, 0, 255, 80], line: [136, 0, 255] },
+};
+
+// Connectivity colors by status - matches CONNECTIVITY_STATUS_CONFIG
+const CONNECTIVITY_COLORS: Record<ConnectivityStatus, { fill: [number, number, number, number]; line: [number, number, number] }> = {
+  normal: { fill: [34, 197, 94, 60], line: [34, 197, 94] },
+  degraded: { fill: [234, 179, 8, 80], line: [234, 179, 8] },
+  restricted: { fill: [249, 115, 22, 100], line: [249, 115, 22] },
+  blackout: { fill: [239, 68, 68, 120], line: [239, 68, 68] },
+  unknown: { fill: [107, 114, 128, 50], line: [107, 114, 128] },
+};
+
 interface MapProps {
   events: ProtestEvent[];
   onEventClick: (event: ProtestEvent) => void;
   showPPU?: boolean;
+  airspaceData?: AirspaceEvent[];
+  showAirspace?: boolean;
+  onAirspaceClick?: (event: AirspaceEvent) => void;
+  connectivityData?: ProvinceConnectivity[];
+  showConnectivity?: boolean;
+  onConnectivityClick?: (province: ProvinceConnectivity) => void;
 }
 
-export default function Map({ events, onEventClick, showPPU = true }: MapProps) {
+export default function Map({ 
+  events, 
+  onEventClick, 
+  showPPU = true,
+  airspaceData = [],
+  showAirspace = true,
+  onAirspaceClick,
+  connectivityData = [],
+  showConnectivity = false,
+  onConnectivityClick
+}: MapProps) {
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
 
   // Separate events by type for different heatmap colors
@@ -58,6 +96,38 @@ export default function Map({ events, onEventClick, showPPU = true }: MapProps) 
     return { protestEvents, policeEvents };
   }, [events]);
 
+  // Get airspace colors based on type
+  const getAirspaceFillColor = (d: AirspaceEvent): [number, number, number, number] => {
+    const airspaceType = d.properties.airspace_type || 'airspace_restriction';
+    return AIRSPACE_COLORS[airspaceType]?.fill || AIRSPACE_COLORS.airspace_restriction.fill;
+  };
+
+  const getAirspaceLineColor = (d: AirspaceEvent): [number, number, number] => {
+    const airspaceType = d.properties.airspace_type || 'airspace_restriction';
+    return AIRSPACE_COLORS[airspaceType]?.line || AIRSPACE_COLORS.airspace_restriction.line;
+  };
+
+  // Get connectivity colors based on status
+  const getConnectivityFillColor = (d: ProvinceConnectivity): [number, number, number, number] => {
+    const status = d.properties.status || 'unknown';
+    return CONNECTIVITY_COLORS[status]?.fill || CONNECTIVITY_COLORS.unknown.fill;
+  };
+
+  const getConnectivityLineColor = (d: ProvinceConnectivity): [number, number, number] => {
+    const status = d.properties.status || 'unknown';
+    return CONNECTIVITY_COLORS[status]?.line || CONNECTIVITY_COLORS.unknown.line;
+  };
+
+  // Get connectivity radius based on population (larger cities = larger circles)
+  const getConnectivityRadius = (d: ProvinceConnectivity): number => {
+    const pop = d.properties.population || 500000;
+    if (pop > 5000000) return 40;  // Tehran
+    if (pop > 2000000) return 30;  // Major cities
+    if (pop > 1000000) return 25;
+    if (pop > 500000) return 20;
+    return 15;  // Smaller provinces
+  };
+
   // Get color based on event type and verified status
   const getEventColor = (d: ProtestEvent): [number, number, number] => {
     const eventType = d.properties.event_type || 'protest';
@@ -65,14 +135,80 @@ export default function Map({ events, onEventClick, showPPU = true }: MapProps) 
     return d.properties.verified ? colors.verified : colors.unverified;
   };
 
+  // Get radius based on cluster size
+  const getEventRadius = (d: ProtestEvent): number => {
+    const count = d.properties.cluster_count || 1;
+    if (count === 1) return 3;
+    if (count <= 3) return 5;
+    if (count <= 5) return 7;
+    if (count <= 10) return 9;
+    return Math.min(12, 9 + Math.log2(count)); // Logarithmic scaling for large clusters
+  };
+
   const layers = [
+    // Connectivity layer (render first, as background)
+    showConnectivity && connectivityData.length > 0 && new ScatterplotLayer({
+      id: 'connectivity-layer',
+      data: connectivityData,
+      pickable: true,
+      opacity: 0.7,
+      stroked: true,
+      filled: true,
+      radiusScale: 1,
+      radiusMinPixels: 15,
+      radiusMaxPixels: 50,
+      lineWidthMinPixels: 2,
+      getPosition: (d: ProvinceConnectivity) => d.geometry.coordinates,
+      getRadius: getConnectivityRadius,
+      getFillColor: getConnectivityFillColor,
+      getLineColor: getConnectivityLineColor,
+      getLineWidth: 2,
+      onClick: (info) => {
+        if (info.object && onConnectivityClick) {
+          onConnectivityClick(info.object as ProvinceConnectivity);
+        }
+      },
+      updateTriggers: {
+        getFillColor: connectivityData,
+        getLineColor: connectivityData,
+        getRadius: connectivityData
+      }
+    }),
+    // Airspace restrictions layer (render first, below events)
+    showAirspace && airspaceData.length > 0 && new PolygonLayer({
+      id: 'airspace-layer',
+      data: airspaceData.filter(d => d.geometry.type === 'Polygon'),
+      pickable: true,
+      stroked: true,
+      filled: true,
+      extruded: false,
+      wireframe: false,
+      lineWidthMinPixels: 2,
+      getPolygon: (d: AirspaceEvent) => {
+        // GeoJSON Polygon coordinates are [[[lon, lat], ...]]
+        const coords = d.geometry.coordinates as number[][][];
+        return coords[0]; // First ring of polygon
+      },
+      getFillColor: getAirspaceFillColor,
+      getLineColor: getAirspaceLineColor,
+      getLineWidth: 2,
+      onClick: (info) => {
+        if (info.object && onAirspaceClick) {
+          onAirspaceClick(info.object as AirspaceEvent);
+        }
+      },
+      updateTriggers: {
+        getFillColor: airspaceData,
+        getLineColor: airspaceData
+      }
+    }),
     // Protest heatmap (red)
     new HeatmapLayer({
       id: 'heatmap-layer-protest',
       data: protestEvents,
       pickable: false,
       getPosition: (d: ProtestEvent) => d.geometry.coordinates,
-      getWeight: (d: ProtestEvent) => d.properties.intensity,
+      getWeight: (d: ProtestEvent) => d.properties.intensity * (d.properties.cluster_count || 1),
       radiusPixels: 30,
       intensity: 1,
       threshold: 0.05,
@@ -91,7 +227,7 @@ export default function Map({ events, onEventClick, showPPU = true }: MapProps) 
       data: policeEvents,
       pickable: false,
       getPosition: (d: ProtestEvent) => d.geometry.coordinates,
-      getWeight: (d: ProtestEvent) => d.properties.intensity * 1.5, // Boost visibility
+      getWeight: (d: ProtestEvent) => d.properties.intensity * 1.5 * (d.properties.cluster_count || 1),
       radiusPixels: 40,
       intensity: 1.2,
       threshold: 0.03,
@@ -113,21 +249,26 @@ export default function Map({ events, onEventClick, showPPU = true }: MapProps) 
       filled: true,
       radiusScale: 1000,
       radiusMinPixels: 5,
-      radiusMaxPixels: 20,
+      radiusMaxPixels: 30,  // Increased for clusters
       lineWidthMinPixels: 1,
       getPosition: (d: ProtestEvent) => d.geometry.coordinates,
+      getRadius: (d: ProtestEvent) => getEventRadius(d),
       getFillColor: (d: ProtestEvent) => getEventColor(d),
-      getLineColor: [0, 0, 0],
+      getLineColor: (d: ProtestEvent) => d.properties.is_cluster ? [255, 255, 255] : [0, 0, 0],
+      getLineWidth: (d: ProtestEvent) => d.properties.is_cluster ? 2 : 1,
       onClick: (info) => {
         if (info.object) {
           onEventClick(info.object as ProtestEvent);
         }
       },
       updateTriggers: {
-        getFillColor: events
+        getFillColor: events,
+        getRadius: events,
+        getLineColor: events,
+        getLineWidth: events
       }
     })
-  ].filter(Boolean);  // Remove null layers (when showPPU is false)
+  ].filter(Boolean);  // Remove null layers (when showPPU is false or no airspace)
 
   return (
     <div className="relative w-full h-full">

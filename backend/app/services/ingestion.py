@@ -262,6 +262,37 @@ YOUTUBE_CHANNELS = {
         "name": "BBC Persian",
         "reliability": 0.9,
     },
+    # New media channels
+    "bayan": {
+        "channel_id": "UCZCh5EFHJRWLmzDvs1K2-xQ",
+        "name": "Bayan",
+        "reliability": 0.75,
+    },
+    "euronews_farsi": {
+        "channel_id": "UCYsNi1_qkLQxJRKGmJjCcLA",
+        "name": "Euro News FA",
+        "reliability": 0.85,
+    },
+    "iranefarda": {
+        "channel_id": "UCNJnFahJdYOihkpH_Kj2I1g",
+        "name": "Iranefarda",
+        "reliability": 0.75,
+    },
+    "afghan_intl": {
+        "channel_id": "UCh1jJuInZIWdM-k8lpCq7Wg",
+        "name": "Afghan Intl",
+        "reliability": 0.8,
+    },
+    "mohammad_manzarpour": {
+        "channel_id": "UC5kfz8OqPj6KJi8PLYCk4Jg",
+        "name": "Mohammad Manzarpour",
+        "reliability": 0.7,
+    },
+    "radis": {
+        "channel_id": "UCKwNYMPdS3b8iQB5eOgXw3A",
+        "name": "Radis",
+        "reliability": 0.7,
+    },
 }
 
 # ============================================================================
@@ -283,6 +314,27 @@ RSS_FEEDS = {
         "url": "https://ir.voanews.com/api/ziqp$eqopi",
         "name": "VOA Persian",
         "reliability": 0.85,
+    },
+    # New media outlets
+    "iran_intl": {
+        "url": "https://www.iranintl.com/en/rss",
+        "name": "IRAN INTL",
+        "reliability": 0.85,
+    },
+    "euronews_farsi": {
+        "url": "https://fa.euronews.com/rss",
+        "name": "Euro News FA",
+        "reliability": 0.85,
+    },
+    "iranefarda": {
+        "url": "https://iranefarda.com/feed",
+        "name": "Iranefarda",
+        "reliability": 0.75,
+    },
+    "afghan_intl": {
+        "url": "https://www.afi.tv/feed",
+        "name": "Afghan Intl",
+        "reliability": 0.8,
     },
     # International News in English
     "reuters_world": {
@@ -306,6 +358,19 @@ RSS_FEEDS = {
         "name": "Amnesty International",
         "reliability": 0.95,
     },
+    # OSINT / Verification Sources
+    "geoconfirmed": {
+        "url": "https://geoconfirmed.org/feed",
+        "name": "GeoConfirmed",
+        "reliability": 0.9,
+        "source_category": "osint",
+    },
+    "factnameh": {
+        "url": "https://factnameh.com/feed",
+        "name": "FactNameh",
+        "reliability": 0.9,
+        "source_category": "verification",
+    },
 }
 
 # ============================================================================
@@ -317,6 +382,10 @@ TWITTER_ACCOUNTS = [
     "IranIntl",         # Iran International Persian
     "ABORSAT",          # Persian news
     "Aborsat_farsi",    # News
+    "BBCPersian",       # BBC Persian
+    "euaborsat",        # Euro News FA
+    "IraneFardaTV",     # Iranefarda
+    "AfghanIntl",       # Afghan Intl
     # Journalists & Activists
     "ManijehNasrabadi", # Journalist
     "AlinejadMasih",    # Activist
@@ -324,9 +393,13 @@ TWITTER_ACCOUNTS = [
     "UK_REPT",          # UK-based coverage
     "RealPersianGod",   # Commentary
     "Savakzadeh",       # Coverage
+    "maborsat",         # Mohammad Manzarpour
     # OSINT & Citizen journalism
     "1500tasvir",       # Citizen journalism
     "HengawO",          # Kurdistan human rights
+    "GeoConfirmed",     # GeoConfirmed OSINT verification
+    "MahsaAlert",       # MahsaAlert safety notifications
+    "Aborsat_FactCh",   # FactNameh verification
 ]
 
 # Nitter instances (public Twitter mirrors) - tested and working
@@ -349,14 +422,22 @@ TELEGRAM_CHANNELS = [
     "irannc",               # Iran news - WORKS
     "Farsi_Iranwire",       # IranWire Persian - WORKS
     # May work (public preview status varies)
-    "iranintl",
+    "iranintl",             # IRAN INTL
     "manikiusa",
     "VOAfarsi",
     "radiofaborsat",
     "IranHrm",
-    "Iran_Revolutionn",
-    "irannc",
-    "Farsi_Iranwire",
+    # New media channels
+    "Bayan_news",           # Bayan
+    "euronewsfarsi",        # Euro News FA
+    "iranefardanews",       # Iranefarda
+    "AfghanIntlTV",         # Afghan Intl
+    "MohammadManzarpour",   # Mohammad Manzarpour
+    "RadisMedia",           # Radis
+    # OSINT / Verification
+    "GeoConfirmed",         # GeoConfirmed OSINT
+    "MahsaAlerts",          # MahsaAlert safety alerts
+    "FactNameh",            # FactNameh verification
 ]
 
 

@@ -53,27 +53,83 @@ const EVENT_TYPE_CONFIG: Record<
   },
 };
 
+interface ClusterEvent {
+  id: number;
+  title: string;
+  description: string;
+  timestamp: string | null;
+  event_type: EventType;
+  verified: boolean;
+  source_url: string | null;
+}
+
 interface SidebarProps {
   event: ProtestEvent | null;
   onClose: () => void;
   stats: Stats | null;
+  allEvents?: ProtestEvent[]; // All events for looking up cluster contents
 }
 
-export default function Sidebar({ event, onClose, stats }: SidebarProps) {
+export default function Sidebar({
+  event,
+  onClose,
+  stats,
+  allEvents = [],
+}: SidebarProps) {
   const [translatedTitle, setTranslatedTitle] = useState<string | null>(null);
   const [translatedDesc, setTranslatedDesc] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
+  const [clusterEvents, setClusterEvents] = useState<ClusterEvent[]>([]);
+  const [loadingCluster, setLoadingCluster] = useState(false);
 
   // Use relative URLs in production (Cloud Run/Vercel), absolute in local dev
   const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
-  // Reset translation state when event changes
+  // Reset translation state and fetch cluster events when event changes
   useEffect(() => {
     setTranslatedTitle(null);
     setTranslatedDesc(null);
     setShowTranslation(false);
+    setClusterEvents([]);
+
+    // If this is a cluster, fetch the individual events
+    if (event?.properties.is_cluster && event.properties.event_ids) {
+      fetchClusterEvents(event.properties.event_ids);
+    }
   }, [event?.properties.id]);
+
+  const fetchClusterEvents = async (eventIds: number[]) => {
+    setLoadingCluster(true);
+    try {
+      // Fetch unclustered events to get individual details
+      const response = await fetch(
+        `${API_URL}/api/events?hours=12&cluster=false`
+      );
+      const data = await response.json();
+
+      // Filter to only the events in this cluster
+      const clusterData = data.features
+        .filter((e: ProtestEvent) =>
+          eventIds.includes(e.properties.id as number)
+        )
+        .map((e: ProtestEvent) => ({
+          id: e.properties.id as number,
+          title: e.properties.title,
+          description: e.properties.description,
+          timestamp: e.properties.timestamp,
+          event_type: e.properties.event_type,
+          verified: e.properties.verified,
+          source_url: e.properties.source_url,
+        }));
+
+      setClusterEvents(clusterData);
+    } catch (error) {
+      console.error('Failed to fetch cluster events:', error);
+    } finally {
+      setLoadingCluster(false);
+    }
+  };
 
   const handleTranslate = async () => {
     if (!event) return;
@@ -257,6 +313,13 @@ export default function Sidebar({ event, onClose, stats }: SidebarProps) {
         </button>
 
         <div className="flex items-center gap-2 mb-4 flex-wrap pr-8 md:pr-0">
+          {/* Cluster badge - show first if it's a cluster */}
+          {event.properties.is_cluster && (
+            <span className="flex items-center gap-1 bg-linear-to-r from-amber-500 to-orange-500 text-black px-2 py-0.5 text-xs font-bold uppercase tracking-wider">
+              📍 {event.properties.cluster_count} Reports
+            </span>
+          )}
+
           {/* Event type badge */}
           {(() => {
             const eventType = event.properties.event_type || 'protest';
@@ -281,44 +344,159 @@ export default function Sidebar({ event, onClose, stats }: SidebarProps) {
             </span>
           )}
 
-          <span className="text-gray-500 text-xs font-mono">
-            ID: {event.properties.id}
-          </span>
+          {!event.properties.is_cluster && (
+            <span className="text-gray-500 text-xs font-mono">
+              ID: {event.properties.id}
+            </span>
+          )}
 
-          {/* Translate button */}
-          <button
-            onClick={handleTranslate}
-            disabled={isTranslating}
-            className={`ml-auto flex items-center gap-1 px-2 py-0.5 text-xs font-medium transition-colors ${
-              showTranslation
-                ? 'bg-blue-600 text-white'
-                : 'bg-zinc-800 text-gray-300 hover:bg-zinc-700'
-            }`}>
-            {isTranslating ? (
-              <Loader2 size={12} className="animate-spin" />
+          {/* Translate button - only show for non-clusters */}
+          {!event.properties.is_cluster && (
+            <button
+              onClick={handleTranslate}
+              disabled={isTranslating}
+              className={`ml-auto flex items-center gap-1 px-2 py-0.5 text-xs font-medium transition-colors ${
+                showTranslation
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-zinc-800 text-gray-300 hover:bg-zinc-700'
+              }`}>
+              {isTranslating ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Languages size={12} />
+              )}
+              {showTranslation ? 'Original' : 'Translate'}
+            </button>
+          )}
+        </div>
+
+        {/* Cluster breakdown */}
+        {event.properties.is_cluster && event.properties.type_breakdown && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 mb-4">
+            <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">
+              Event Types in Cluster
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries(event.properties.type_breakdown).map(
+                ([type, count]) => {
+                  const config =
+                    EVENT_TYPE_CONFIG[type as EventType] ||
+                    EVENT_TYPE_CONFIG.protest;
+                  return (
+                    <div key={type} className="flex items-center gap-2">
+                      <span
+                        className={`w-3 h-3 rounded-full ${config.bgColor}`}></span>
+                      <span className="text-gray-300 text-sm capitalize">
+                        {type.replace('_', ' ')}
+                      </span>
+                      <span className="text-white font-mono ml-auto">
+                        {count as number}
+                      </span>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Show individual events in cluster */}
+        {event.properties.is_cluster && (
+          <div className="mb-6">
+            <div className="text-xs text-gray-400 uppercase tracking-wider mb-3">
+              Reports in this area ({event.properties.cluster_count})
+            </div>
+
+            {loadingCluster ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              </div>
+            ) : clusterEvents.length > 0 ? (
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
+                {clusterEvents.map((ce) => {
+                  const config =
+                    EVENT_TYPE_CONFIG[ce.event_type] ||
+                    EVENT_TYPE_CONFIG.protest;
+                  return (
+                    <div
+                      key={ce.id}
+                      className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 hover:border-zinc-700 transition-colors">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span
+                          className={`${config.bgColor} text-white px-1.5 py-0.5 text-xs font-bold rounded`}>
+                          {config.emoji}
+                        </span>
+                        {ce.verified && (
+                          <span className="bg-white text-black px-1.5 py-0.5 text-xs font-bold rounded flex items-center gap-1">
+                            <Shield size={10} /> Verified
+                          </span>
+                        )}
+                        <span className="text-gray-500 text-xs ml-auto">
+                          #{ce.id}
+                        </span>
+                      </div>
+                      <h4
+                        className="text-sm font-medium text-white mb-1"
+                        dir="rtl">
+                        {ce.title}
+                      </h4>
+                      {ce.description && (
+                        <p
+                          className="text-xs text-gray-400 line-clamp-2"
+                          dir="rtl">
+                          {ce.description}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-xs text-gray-500">
+                          {ce.timestamp
+                            ? format(new Date(ce.timestamp), 'MMM d, HH:mm')
+                            : 'Unknown'}
+                        </span>
+                        {ce.source_url && (
+                          <a
+                            href={ce.source_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                            Source <ExternalLink size={10} />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <Languages size={12} />
+              <p className="text-gray-500 text-sm">Loading reports...</p>
             )}
-            {showTranslation ? 'Original' : 'Translate'}
-          </button>
-        </div>
+          </div>
+        )}
 
-        <h2
-          className="text-xl font-bold mb-4"
-          dir={showTranslation ? 'ltr' : 'rtl'}>
-          {displayTitle}
-        </h2>
+        {/* Single event display */}
+        {!event.properties.is_cluster && (
+          <>
+            <h2
+              className="text-xl font-bold mb-4"
+              dir={showTranslation ? 'ltr' : 'rtl'}>
+              {displayTitle}
+            </h2>
 
-        <div className="flex items-center gap-2 text-gray-400 text-sm mb-6">
-          <Clock size={16} />
-          {event.properties.timestamp
-            ? format(new Date(event.properties.timestamp), 'MMM d, yyyy HH:mm')
-            : 'Unknown Time'}
-        </div>
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-6">
+              <Clock size={16} />
+              {event.properties.timestamp
+                ? format(
+                    new Date(event.properties.timestamp),
+                    'MMM d, yyyy HH:mm'
+                  )
+                : 'Unknown Time'}
+            </div>
 
-        <div className="prose prose-invert prose-sm mb-6">
-          <p dir={showTranslation ? 'ltr' : 'rtl'}>{displayDesc}</p>
-        </div>
+            <div className="prose prose-invert prose-sm mb-6">
+              <p dir={showTranslation ? 'ltr' : 'rtl'}>{displayDesc}</p>
+            </div>
+          </>
+        )}
 
         {/* Media display */}
         {event.properties.media_url ? (
