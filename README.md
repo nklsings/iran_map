@@ -1,8 +1,8 @@
 # 🗺️ Iran Protest Map
 
-A real-time interactive heatmap visualization of protest events in Iran, aggregating data from multiple sources including Telegram channels and RSS feeds. Built with Next.js, FastAPI, and deck.gl.
+A real-time interactive heatmap visualization of protest events in Iran, aggregating data from multiple OSINT sources including Telegram channels, RSS feeds, ACLED conflict data, GeoConfirmed, and more. Features AI-powered situation summaries, city analytics, airspace monitoring, and internet connectivity tracking. Built with Next.js, FastAPI, and deck.gl.
 
-Website (URL to be updated): https://iran-protest-map-435357314840.us-central1.run.app/
+Website (URL to be updated): https://iran-protest-heatmap.vercel.app/
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
@@ -20,7 +20,9 @@ Website (URL to be updated): https://iran-protest-map-435357314840.us-central1.r
 - [Architecture](#️-architecture)
 - [Tech Stack](#️-tech-stack)
 - [Getting Started](#-getting-started)
+- [Pages & Routes](#-pages--routes)
 - [API Endpoints](#-api-endpoints)
+- [Data Sources](#-data-sources)
 - [Environment Variables](#️-environment-variables)
 - [Docker Commands](#-docker-commands)
 - [Production Deployment](#-production-deployment)
@@ -37,46 +39,86 @@ Website (URL to be updated): https://iran-protest-map-435357314840.us-central1.r
 
 ## ✨ Features
 
+### Core Map Features
 - **Live Heatmap Visualization** — Real-time heatmap of protest events using deck.gl with intensity-based coloring
+- **Event Clustering** — Smart clustering of nearby events for better performance and readability
 - **Verified vs Unverified Events** — Toggle between all reports and verified-only incidents
 - **Event Details** — Click any point to view full details including media, source links, and timestamps
 - **Persian → English Translation** — Built-in translation for report titles and descriptions
 - **Media Support** — Display images and videos from Telegram with native playback
 - **Social Sharing** — Share individual reports via Web Share API or clipboard
-- **GeoJSON API** — RESTful API serving events as GeoJSON FeatureCollections
-- **Automated Ingestion** — Background service to ingest reports from Telegram and RSS feeds
+
+### Intelligence & Analytics
+- **AI-Powered Situation Summaries** — Hourly GPT-4 generated intelligence reports with risk assessments
+- **City Analytics Dashboard** — Track event trends, hourly patterns, and activity levels by city
+- **Hotspot Detection** — Automatic identification of high-activity areas
+- **Trend Analysis** — Compare week-over-week activity changes
+
+### OSINT Data Sources
+- **Multi-Source Aggregation** — RSS feeds, Telegram, YouTube, ACLED, GeoConfirmed, ArcGIS
+- **Real-time Telegram Feed** — Live feed with NLP analysis, urgency scoring, and sentiment detection
+- **ACLED Integration** — Armed Conflict Location & Event Data for verified conflict events
+- **GeoConfirmed Import** — Import geoverified events from GeoConfirmed.org
+
+### Specialized Monitoring
+- **Airspace/NOTAM Tracking** — Monitor flight restrictions and airspace events
+- **Internet Connectivity** — Province-level internet availability tracking (IODA integration)
+- **PPU (Police Presence Unit)** — Crowdsourced police presence reporting with crowd-verification
+
+### Admin Features
+- **Admin Panel** — Create and verify events manually
+- **Source Health Monitoring** — Track which data sources are working
+- **Scheduled Ingestion** — Automatic background data collection every 15 minutes
+
+---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend (Next.js)                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │   Map.tsx   │  │ Sidebar.tsx │  │     page.tsx (Home)     │  │
-│  │  (deck.gl)  │  │  (Details)  │  │   (State Management)    │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Backend (FastAPI)                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │  /api/events│  │ /api/stats  │  │    /api/translate       │  │
-│  │  (GeoJSON)  │  │  (Counts)   │  │  (Persian → English)    │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │              Ingestion Service                            │   │
-│  │   Telegram Channels → Geocoding → PostGIS Database       │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    PostgreSQL + PostGIS                          │
-│         Geospatial database for event storage & queries          │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Frontend (Next.js)                             │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐│
+│  │   Map.tsx   │ │ Sidebar.tsx │ │   Admin     │ │   Analytics/Summary ││
+│  │  (deck.gl)  │ │  (Details)  │ │   Panel     │ │    Dashboards       ││
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Backend (FastAPI)                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │                         API Endpoints                                ││
+│  │  /events  /stats  /translate  /summary  /analytics  /connectivity   ││
+│  │  /airspace  /telegram  /ppu  /osint  /acled  /admin                 ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+│                                                                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │                          Services                                    ││
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────────────┐││
+│  │  │ Ingestion  │ │   OSINT    │ │   ACLED    │ │  Telegram Feed     │││
+│  │  │  (RSS/YT)  │ │ GeoConfirm │ │  Conflict  │ │  NLP Analysis      │││
+│  │  └────────────┘ └────────────┘ └────────────┘ └────────────────────┘││
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────────────┐││
+│  │  │  Summary   │ │ Analytics  │ │   NOTAM    │ │   Connectivity     │││
+│  │  │  (GPT-4)   │ │   Cities   │ │  Airspace  │ │   Monitoring       │││
+│  │  └────────────┘ └────────────┘ └────────────┘ └────────────────────┘││
+│  └─────────────────────────────────────────────────────────────────────┘│
+│                                                                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │                      Scheduled Tasks (APScheduler)                   ││
+│  │   Ingestion (15min) • Summary (60min) • Telegram (10min) • Cleanup  ││
+│  └─────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         PostgreSQL + PostGIS                             │
+│   protest_events • airspace_events • telegram_messages • city_statistics │
+│                      situation_summaries                                 │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
 
 ## 🛠️ Tech Stack
 
@@ -97,12 +139,16 @@ Website (URL to be updated): https://iran-protest-map-435357314840.us-central1.r
 - **GeoAlchemy2** — Geospatial extensions for SQLAlchemy
 - **PostgreSQL + PostGIS** — Geospatial database
 - **Pydantic** — Data validation
+- **APScheduler** — Background task scheduling
+- **OpenAI API** — GPT-4 for situation summaries
 
 ### Infrastructure
 
 - **Docker & Docker Compose** — Containerization
 - **Google Cloud Run** — Serverless deployment
 - **Vercel** — Frontend hosting (alternative)
+
+---
 
 ## 🚀 Getting Started
 
@@ -177,20 +223,36 @@ npm run dev
 # Open http://localhost:3000
 ```
 
+---
+
+## 📄 Pages & Routes
+
+| Route | Description |
+|-------|-------------|
+| `/` | Main interactive map with heatmap visualization |
+| `/admin` | Admin panel for creating/verifying events (requires admin key) |
+| `/analytics` | City analytics dashboard with rankings, trends, and hourly patterns |
+| `/summary` | AI-generated situation summaries with risk assessments |
+
+---
+
 ## 📡 API Endpoints
 
 ### Events
 
 ```
-GET /api/events?hours=12&verified_only=false
+GET /api/events?hours=24&verified_only=false&event_type=protest&cluster=true
 ```
 
-Returns protest events as GeoJSON FeatureCollection.
+Returns protest events as GeoJSON FeatureCollection with clustering.
 
-| Parameter       | Type | Default | Description                    |
-| --------------- | ---- | ------- | ------------------------------ |
-| `hours`         | int  | 12      | Time window in hours           |
-| `verified_only` | bool | false   | Filter to verified events only |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `hours` | int | 24 | Time window in hours |
+| `verified_only` | bool | false | Filter to verified events only |
+| `event_type` | str | null | Filter by type: protest, police_presence, strike, clash, arrest |
+| `cluster` | bool | true | Enable clustering of nearby events |
+| `cluster_radius` | float | 2.0 | Clustering radius in km |
 
 ### Stats
 
@@ -198,17 +260,7 @@ Returns protest events as GeoJSON FeatureCollection.
 GET /api/stats?hours=12
 ```
 
-Returns aggregate statistics.
-
-**Response:**
-
-```json
-{
-  "total_reports": 42,
-  "verified_incidents": 15,
-  "hours_window": 12
-}
-```
+Returns aggregate statistics including event type breakdown.
 
 ### Translation
 
@@ -219,18 +271,79 @@ Content-Type: application/json
 {"text": "متن فارسی"}
 ```
 
-Translates Persian text to English.
-
-### Ingestion
+### AI Situation Summary
 
 ```
-POST /api/ingest
-Content-Type: application/json
-
-{"trigger_key": "your_cron_secret"}
+GET /api/summary                    # Get current summary
+GET /api/summary/history?limit=24   # Get historical summaries
+POST /api/summary/generate          # Trigger new summary generation
 ```
 
-Triggers ingestion from configured sources (protected by secret).
+### City Analytics
+
+```
+GET /api/analytics/summary              # Overall analytics
+GET /api/analytics/cities?limit=30      # City rankings
+GET /api/analytics/city/{city_name}     # Single city details
+GET /api/analytics/hourly?days=7        # Hourly distribution
+GET /api/analytics/trends?days=30       # Trend analysis
+```
+
+### Telegram Feed
+
+```
+GET /api/telegram/feed?limit=50&min_urgency=0.5   # Get feed with NLP analysis
+GET /api/telegram/urgent?threshold=0.8            # High-urgency messages only
+GET /api/telegram/channels                        # List monitored channels
+```
+
+### PPU (Police Presence Unit)
+
+```
+POST /api/ppu/report    # Submit crowdsourced police presence report
+GET /api/ppu/active     # Get active PPU alerts
+```
+
+Reports are auto-verified when 5+ independent reports exist within 1km in 6 hours.
+
+### Internet Connectivity
+
+```
+GET /api/connectivity               # Province-level connectivity GeoJSON
+GET /api/connectivity/provinces     # All provinces with status
+GET /api/connectivity/national      # National summary
+```
+
+### Airspace / NOTAMs
+
+```
+GET /api/airspace?fir=OIIX&active_only=true   # Get active restrictions
+POST /api/airspace/refresh                     # Refresh NOTAM data
+```
+
+### OSINT Data
+
+```
+GET /api/osint/fetch           # Fetch from all OSINT sources
+POST /api/osint/import-kml     # Import GeoConfirmed KML (admin)
+GET /api/osint/arcgis          # Fetch ArcGIS feature layers
+```
+
+### ACLED Conflict Data
+
+```
+GET /api/acled/fetch?days=30   # Fetch ACLED events
+GET /api/acled/status          # Check API configuration
+```
+
+### Admin Endpoints (Protected)
+
+```
+POST /api/admin/event          # Create verified event
+GET /api/admin/verify/{id}     # Verify an event
+DELETE /api/admin/event/{id}   # Delete an event
+POST /api/ingest               # Trigger manual ingestion
+```
 
 ### Health Check
 
@@ -238,24 +351,52 @@ Triggers ingestion from configured sources (protected by secret).
 GET /health
 ```
 
-Returns `{"status": "healthy"}` for load balancer checks.
+---
+
+## 📊 Data Sources
+
+| Source | Type | Status | Description |
+|--------|------|--------|-------------|
+| BBC Persian RSS | News | ✅ Working | High reliability |
+| DW Persian RSS | News | ✅ Working | High reliability |
+| VOA Persian RSS | News | ⚠️ Intermittent | Check feed URL |
+| Human Rights Watch | NGO | ✅ Working | Human rights focus |
+| Amnesty International | NGO | ✅ Working | Human rights focus |
+| ACLED | Conflict Data | ✅ Working | Requires API key |
+| GeoConfirmed | OSINT | ✅ Working | Geoverified events |
+| ArcGIS Feature Services | OSINT | ✅ Working | Military/infrastructure |
+| YouTube Persian | Social | ✅ Working | Live news channels |
+| Telegram Channels | Social | ⚠️ Partial | Rate limited |
+| Twitter/Nitter | Social | ❌ Unreliable | Nitter blocked |
+
+---
 
 ## ⚙️ Environment Variables
 
 ### Frontend
 
-| Variable              | Description     | Default         |
-| --------------------- | --------------- | --------------- |
+| Variable | Description | Default |
+|----------|-------------|---------|
 | `NEXT_PUBLIC_API_URL` | Backend API URL | `""` (relative) |
 
 ### Backend
 
-| Variable            | Description                       | Required      |
-| ------------------- | --------------------------------- | ------------- |
-| `DATABASE_URL`      | PostgreSQL connection string      | Yes           |
-| `CRON_SECRET`       | Secret key for ingestion endpoint | No            |
-| `TELEGRAM_API_ID`   | Telegram API credentials          | For ingestion |
-| `TELEGRAM_API_HASH` | Telegram API credentials          | For ingestion |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABASE_URL` | PostgreSQL connection string | Yes |
+| `CRON_SECRET` | Secret key for ingestion endpoint | No |
+| `ADMIN_KEY` | Secret key for admin endpoints | No |
+| `OPENAI_API_KEY` | OpenAI API key for summaries | For AI features |
+| `ACLED_API_KEY` | ACLED API key | For ACLED data |
+| `ACLED_EMAIL` | ACLED registered email | For ACLED data |
+| `TELEGRAM_API_ID` | Telegram API credentials | For Telegram |
+| `TELEGRAM_API_HASH` | Telegram API credentials | For Telegram |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare Radar API | For connectivity |
+| `ENABLE_AUTO_INGESTION` | Enable scheduled ingestion | `true` |
+| `INGESTION_INTERVAL_MINUTES` | Ingestion frequency | `15` |
+| `REPORT_MAX_AGE_HOURS` | Auto-delete old reports | `168` (7 days) |
+
+---
 
 ## 🐳 Docker Commands
 
@@ -276,6 +417,8 @@ docker-compose up -d --build
 docker-compose down -v
 docker-compose up -d
 ```
+
+---
 
 ## 🌐 Production Deployment
 
@@ -302,34 +445,54 @@ vercel --prod
 
 When deploying frontend separately, set `NEXT_PUBLIC_API_URL` to your backend URL.
 
+---
+
 ## 📁 Project Structure
 
 ```
 iran_map/
-├── app/                    # Next.js App Router pages
-│   ├── page.tsx           # Main page component
-│   ├── layout.tsx         # Root layout
-│   └── globals.css        # Global styles
-├── components/            # React components
-│   ├── Map.tsx           # deck.gl map visualization
-│   └── Sidebar.tsx       # Event details panel
-├── lib/                   # Shared utilities
-│   └── types.ts          # TypeScript interfaces
-├── backend/              # FastAPI backend
+├── app/                         # Next.js App Router pages
+│   ├── page.tsx                # Main map page
+│   ├── layout.tsx              # Root layout
+│   ├── globals.css             # Global styles
+│   ├── admin/
+│   │   └── page.tsx           # Admin panel
+│   ├── analytics/
+│   │   └── page.tsx           # City analytics dashboard
+│   └── summary/
+│       └── page.tsx           # AI situation summary
+├── components/                  # React components
+│   ├── Map.tsx                 # deck.gl map visualization
+│   ├── Sidebar.tsx             # Event details panel
+│   └── TelegramFeed.tsx        # Live Telegram feed
+├── lib/                         # Shared utilities
+│   └── types.ts                # TypeScript interfaces
+├── backend/                     # FastAPI backend
 │   ├── app/
-│   │   ├── main.py       # API routes
-│   │   ├── models.py     # SQLAlchemy models
-│   │   ├── schemas.py    # Pydantic schemas
-│   │   ├── database.py   # Database connection
+│   │   ├── main.py            # API routes & scheduler
+│   │   ├── models.py          # SQLAlchemy models
+│   │   ├── schemas.py         # Pydantic schemas
+│   │   ├── database.py        # Database connection
 │   │   └── services/
-│   │       └── ingestion.py  # Data ingestion
+│   │       ├── ingestion.py   # RSS/YouTube ingestion
+│   │       ├── osint.py       # GeoConfirmed, ArcGIS
+│   │       ├── acled.py       # ACLED conflict data
+│   │       ├── telegram_feed.py # Telegram with NLP
+│   │       ├── summary.py     # AI situation summaries
+│   │       ├── city_analytics.py # City statistics
+│   │       ├── notam.py       # Airspace/NOTAM parsing
+│   │       ├── connectivity.py # Internet monitoring
+│   │       └── persian_nlp.py # Persian text analysis
 │   ├── requirements.txt
 │   └── Dockerfile
-├── docker-compose.yml    # Local development setup
-├── Dockerfile           # Production multi-stage build
-├── start.sh             # Cloud Run startup script
-└── vercel.json          # Vercel configuration
+├── docker-compose.yml          # Local development setup
+├── Dockerfile                  # Production multi-stage build
+├── start.sh                    # Cloud Run startup script
+├── cloudbuild.yaml             # GCP Cloud Build config
+└── vercel.json                 # Vercel configuration
 ```
+
+---
 
 ## 🤝 Contributing
 
@@ -337,14 +500,14 @@ We welcome contributions from developers, designers, translators, and human righ
 
 ### Ways to Contribute
 
-| Type                      | Description                                        |
-| ------------------------- | -------------------------------------------------- |
-| 🐛 **Bug Reports**        | Found a bug? Open an issue with steps to reproduce |
-| ✨ **Feature Requests**   | Have an idea? Open an issue to discuss it first    |
-| 🔧 **Code Contributions** | Submit PRs for bug fixes or approved features      |
-| 🌍 **Translations**       | Help translate the UI or improve Persian geocoding |
-| 📊 **Data Sources**       | Suggest reliable Telegram channels or news sources |
-| 📝 **Documentation**      | Improve docs, fix typos, add examples              |
+| Type | Description |
+|------|-------------|
+| 🐛 **Bug Reports** | Found a bug? Open an issue with steps to reproduce |
+| ✨ **Feature Requests** | Have an idea? Open an issue to discuss it first |
+| 🔧 **Code Contributions** | Submit PRs for bug fixes or approved features |
+| 🌍 **Translations** | Help translate the UI or improve Persian geocoding |
+| 📊 **Data Sources** | Suggest reliable Telegram channels or news sources |
+| 📝 **Documentation** | Improve docs, fix typos, add examples |
 
 ### Development Workflow
 
@@ -424,6 +587,8 @@ Then open a Pull Request against `main` with a clear description.
 - [ ] No console.log or print statements left behind
 - [ ] Tested on both frontend and backend if relevant
 
+---
+
 ## 🐛 Reporting Issues
 
 ### Bug Reports
@@ -443,6 +608,8 @@ For new features, please describe:
 - **Use case**: Why is this feature needed?
 - **Proposed solution**: How should it work?
 - **Alternatives considered**: Other approaches you've thought about
+
+---
 
 ## 🛡️ Code of Conduct
 
@@ -468,6 +635,8 @@ We are committed to providing a welcoming and safe environment for all contribut
 
 Violations may result in temporary or permanent bans from the project. Report issues to the maintainers via GitHub issues or direct message.
 
+---
+
 ## 🔒 Security
 
 ### Reporting Vulnerabilities
@@ -487,6 +656,8 @@ We take security seriously and will respond promptly to valid reports.
 - Keep dependencies updated
 - Report any suspicious data in the ingestion pipeline
 
+---
+
 ## 💬 Community
 
 ### Getting Help
@@ -500,6 +671,8 @@ We take security seriously and will respond promptly to valid reports.
 - ⭐ Star the repository to show support
 - 👁️ Watch for release notifications
 - 🍴 Fork to experiment with your own ideas
+
+---
 
 ## 📄 License
 
@@ -529,35 +702,42 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+---
+
 ## 🗺️ Roadmap
 
 See our full [TODO.md](TODO.md) for the complete roadmap. Key priorities:
 
 ### Coming Soon
 
-| Feature                      | Status      | Priority     |
-| ---------------------------- | ----------- | ------------ |
-| Official X.com (Twitter) API | 🔴 Planned  | High         |
-| More Telegram channels       | 🔴 Planned  | High         |
-| Date range filtering         | 🟡 Planned  | Medium       |
-| City/region filtering        | 🟡 Planned  | Medium       |
-| Event search                 | 🟡 Planned  | Medium       |
-| Export (CSV/JSON)            | 🟡 Planned  | Medium       |
-| GitHub Actions CI/CD         | 🟢 Planned  | Nice to have |
-| PWA support                  | 🟢 Planned  | Nice to have |
-| Real-time WebSocket updates  | 🔵 Research | Future       |
+| Feature | Status | Priority |
+|---------|--------|----------|
+| Official X.com (Twitter) API | 🔴 Planned | High |
+| More Telegram channels | 🔴 Planned | High |
+| Date range filtering | 🟡 Planned | Medium |
+| City/region filtering | 🟡 Planned | Medium |
+| Event search | 🟡 Planned | Medium |
+| Export (CSV/JSON) | 🟡 Planned | Medium |
+| GitHub Actions CI/CD | 🟢 Planned | Nice to have |
+| PWA support | 🟢 Planned | Nice to have |
+| Real-time WebSocket updates | 🔵 Research | Future |
 
-### Current Data Source Status
+### Recently Completed ✅
 
-| Source             | Status        |
-| ------------------ | ------------- |
-| BBC Persian RSS    | ✅ Working    |
-| DW Persian RSS     | ✅ Working    |
-| Human Rights Watch | ✅ Working    |
-| Twitter/Nitter     | ❌ Unreliable |
-| Telegram Public    | ⚠️ Partial    |
+- AI-Powered Situation Summaries (GPT-4)
+- City Analytics Dashboard
+- ACLED Conflict Data Integration
+- GeoConfirmed OSINT Import
+- Telegram Live Feed with NLP
+- Internet Connectivity Monitoring
+- Airspace/NOTAM Tracking
+- PPU Crowdsourced Reporting
+- Event Clustering
+- Admin Panel
 
 👉 **Want to contribute?** Check [TODO.md](TODO.md) and pick a task!
+
+---
 
 ## 🙏 Acknowledgments
 
@@ -565,6 +745,9 @@ See our full [TODO.md](TODO.md) for the complete roadmap. Key priorities:
 - [MapLibre](https://maplibre.org/) — Open-source mapping
 - [FastAPI](https://fastapi.tiangolo.com/) — Modern Python API framework
 - [PostGIS](https://postgis.net/) — Geospatial database extensions
+- [ACLED](https://acleddata.com/) — Armed Conflict Location & Event Data
+- [GeoConfirmed](https://geoconfirmed.org/) — Community-verified geolocation
+- [IODA](https://ioda.inetintel.cc.gatech.edu/) — Internet Outage Detection
 - All contributors and the open-source community
 
 ---
