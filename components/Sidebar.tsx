@@ -63,11 +63,144 @@ interface ClusterEvent {
   source_url: string | null;
 }
 
+// ============================================================================
+// RICH DESCRIPTION COMPONENT - Renders links as clickable
+// ============================================================================
+function RichDescription({ text, rtl = true }: { text: string; rtl?: boolean }) {
+  if (!text) return null;
+
+  // Split by the "📎 Sources:" section if present
+  const sourcesSplit = text.split(/\n\n📎 Sources:\n/);
+  const mainText = sourcesSplit[0] || '';
+  const sourcesText = sourcesSplit[1] || '';
+
+  // Parse individual source lines
+  const sourceLines = sourcesText ? sourcesText.split('\n').filter(Boolean) : [];
+
+  // URL regex for making links clickable in main text
+  const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
+
+  // Render main text with clickable URLs
+  const renderTextWithLinks = (text: string) => {
+    const parts = text.split(urlRegex);
+    return parts.map((part, i) => {
+      if (urlRegex.test(part)) {
+        // Reset regex state
+        urlRegex.lastIndex = 0;
+        // Determine link type for styling
+        const isTwitter = part.includes('x.com') || part.includes('twitter.com');
+        const isTelegram = part.includes('t.me');
+        const isYoutube = part.includes('youtube.com') || part.includes('youtu.be');
+        
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`inline-flex items-center gap-1 underline hover:no-underline ${
+              isTwitter ? 'text-blue-400 hover:text-blue-300' :
+              isTelegram ? 'text-sky-400 hover:text-sky-300' :
+              isYoutube ? 'text-red-400 hover:text-red-300' :
+              'text-emerald-400 hover:text-emerald-300'
+            }`}
+          >
+            {isTwitter ? '𝕏' : isTelegram ? '📱' : isYoutube ? '▶️' : '🔗'}
+            <span className="truncate max-w-[200px]">
+              {(() => {
+                try {
+                  const url = new URL(part);
+                  return url.hostname + url.pathname.slice(0, 30);
+                } catch {
+                  return part.slice(0, 40);
+                }
+              })()}
+            </span>
+          </a>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Main description text */}
+      <p dir={rtl ? 'rtl' : 'ltr'} className="text-gray-300">
+        {renderTextWithLinks(mainText)}
+      </p>
+
+      {/* Source links section */}
+      {sourceLines.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-zinc-800">
+          <div className="text-xs font-semibold text-gray-500 mb-2">📎 Sources</div>
+          <div className="space-y-1.5">
+            {sourceLines.map((line, i) => {
+              // Parse emoji prefix and link
+              const match = line.match(/^(.*?):\s*(https?:\/\/\S+)/);
+              if (match) {
+                const [, prefix, url] = match;
+                const isTwitter = url.includes('x.com') || url.includes('twitter.com');
+                const isTelegram = url.includes('t.me');
+                const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
+                
+                return (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${
+                      isTwitter ? 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-400' :
+                      isTelegram ? 'bg-sky-500/10 hover:bg-sky-500/20 text-sky-400' :
+                      isYoutube ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400' :
+                      'bg-zinc-800 hover:bg-zinc-700 text-gray-300'
+                    }`}
+                  >
+                    <span>{prefix.trim()}</span>
+                    <ExternalLink size={12} />
+                  </a>
+                );
+              }
+              return <div key={i} className="text-xs text-gray-500">{line}</div>;
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* GeoConfirmed link if present */}
+      {text.includes('🌍 GeoConfirmed:') && (
+        <div className="mt-2">
+          {text.split('\n').filter(l => l.includes('🌍 GeoConfirmed:')).map((line, i) => {
+            const url = line.match(/(https?:\/\/\S+)/)?.[1];
+            if (url) {
+              return (
+                <a
+                  key={i}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+                >
+                  🌍 View on GeoConfirmed
+                  <ExternalLink size={10} />
+                </a>
+              );
+            }
+            return null;
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface SidebarProps {
   event: ProtestEvent | null;
   onClose: () => void;
   stats: Stats | null;
   allEvents?: ProtestEvent[]; // All events for looking up cluster contents
+  isLoading?: boolean; // Whether data is still loading
 }
 
 export default function Sidebar({
@@ -75,6 +208,7 @@ export default function Sidebar({
   onClose,
   stats,
   allEvents = [],
+  isLoading = false,
 }: SidebarProps) {
   const [translatedTitle, setTranslatedTitle] = useState<string | null>(null);
   const [translatedDesc, setTranslatedDesc] = useState<string | null>(null);
@@ -104,7 +238,7 @@ export default function Sidebar({
     try {
       // Fetch unclustered events to get individual details
       const response = await fetch(
-        `${API_URL}/api/events?hours=12&cluster=false`
+        `${API_URL}/api/events?hours=24&cluster=false`
       );
       const data = await response.json();
 
@@ -202,75 +336,90 @@ export default function Sidebar({
 
   if (!event) {
     return (
-      <div className="absolute top-4 left-4 right-4 md:right-auto md:w-80 z-10 bg-black/90 text-white p-4 md:p-6 border-l-4 border-red-600 backdrop-blur-md rounded-br-lg shadow-2xl">
+      <div className="absolute top-20 left-4 right-4 md:right-auto md:w-80 z-10 bg-black/90 text-white p-4 md:p-6 border-l-4 border-red-600 backdrop-blur-md rounded-br-lg shadow-2xl">
         <h1 className="text-xl md:text-2xl font-bold tracking-tighter mb-2 text-red-500 uppercase flex justify-between items-center">
           <span>Iran Protest Map</span>
           <div className="flex md:hidden gap-2">
             {/* Mobile stats summary */}
-            <span className="text-white text-sm font-mono">
-              {stats?.total_reports || 0} Reports
-            </span>
+            {isLoading ? (
+              <span className="text-gray-400 text-sm flex items-center gap-1">
+                <Loader2 size={12} className="animate-spin" /> Loading...
+              </span>
+            ) : (
+              <span className="text-white text-sm font-mono">
+                {stats?.total_reports || 0} Reports
+              </span>
+            )}
           </div>
         </h1>
 
         {/* Desktop full stats */}
         <div className="hidden md:block space-y-3">
-          <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-            <span className="text-gray-400 text-sm">Total Reports</span>
-            <span className="text-xl font-mono text-red-500">
-              {stats?.total_reports || 0}
-            </span>
-          </div>
-          <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-            <span className="text-gray-400 text-sm flex items-center gap-1">
-              <Siren size={14} className="text-blue-400" /> PPU Alerts
-            </span>
-            <span className="text-xl font-mono text-blue-400">
-              {stats?.police_presence || 0}
-            </span>
-          </div>
-          <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-            <span className="text-gray-400 text-sm">Verified</span>
-            <span className="text-xl font-mono text-white">
-              {stats?.verified_incidents || 0}
-            </span>
-          </div>
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-6 gap-3">
+              <Loader2 size={24} className="animate-spin text-red-500" />
+              <span className="text-sm text-gray-400">Loading data...</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex justify-between items-center border-b border-gray-800 pb-2">
+                <span className="text-gray-400 text-sm">Total Reports</span>
+                <span className="text-xl font-mono text-red-500">
+                  {stats?.total_reports || 0}
+                </span>
+              </div>
+              <div className="flex justify-between items-center border-b border-gray-800 pb-2">
+                <span className="text-gray-400 text-sm flex items-center gap-1">
+                  <Siren size={14} className="text-blue-400" /> PPU Alerts
+                </span>
+                <span className="text-xl font-mono text-blue-400">
+                  {stats?.police_presence || 0}
+                </span>
+              </div>
+              <div className="flex justify-between items-center border-b border-gray-800 pb-2">
+                <span className="text-gray-400 text-sm">Verified</span>
+                <span className="text-xl font-mono text-white">
+                  {stats?.verified_incidents || 0}
+                </span>
+              </div>
 
-          {/* Event type breakdown */}
-          <div className="grid grid-cols-2 gap-2 text-xs mt-3">
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500"></span>
-              <span className="text-gray-500">Protests:</span>
-              <span className="text-gray-300 ml-auto">
-                {stats?.protests || 0}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-              <span className="text-gray-500">Clashes:</span>
-              <span className="text-gray-300 ml-auto">
-                {stats?.clashes || 0}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-              <span className="text-gray-500">Arrests:</span>
-              <span className="text-gray-300 ml-auto">
-                {stats?.arrests || 0}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              <span className="text-gray-500">Police:</span>
-              <span className="text-gray-300 ml-auto">
-                {stats?.police_presence || 0}
-              </span>
-            </div>
-          </div>
+              {/* Event type breakdown */}
+              <div className="grid grid-cols-2 gap-2 text-xs mt-3">
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                  <span className="text-gray-500">Protests:</span>
+                  <span className="text-gray-300 ml-auto">
+                    {stats?.protests || 0}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                  <span className="text-gray-500">Clashes:</span>
+                  <span className="text-gray-300 ml-auto">
+                    {stats?.clashes || 0}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                  <span className="text-gray-500">Arrests:</span>
+                  <span className="text-gray-300 ml-auto">
+                    {stats?.arrests || 0}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                  <span className="text-gray-500">Police:</span>
+                  <span className="text-gray-300 ml-auto">
+                    {stats?.police_presence || 0}
+                  </span>
+                </div>
+              </div>
 
-          <p className="text-xs text-gray-500 mt-3">
-            🔴 Red = Protest • 🔵 Blue = Police (PPU) • ⚪ White = Verified
-          </p>
+              <p className="text-xs text-gray-500 mt-3">
+                🔴 Red = Protest • 🔵 Blue = Police (PPU) • ⚪ White = Verified
+              </p>
+            </>
+          )}
         </div>
 
         {/* Mobile simplified hint */}
@@ -303,7 +452,7 @@ export default function Sidebar({
 
   return (
     <div
-      className={`absolute inset-x-0 bottom-0 md:top-4 md:bottom-auto md:right-4 md:left-auto md:w-96 z-20 bg-zinc-950 text-white border-t-4 md:border-t-0 md:border-r-4 ${borderColorClass} shadow-2xl max-h-[80vh] md:h-[calc(100vh-2rem)] overflow-y-auto rounded-t-xl md:rounded-xl md:rounded-r-none transition-transform duration-300 ease-in-out`}>
+      className={`absolute inset-x-0 bottom-0 md:top-20 md:bottom-auto md:right-4 md:left-auto md:w-96 z-20 bg-zinc-950 text-white border-t-4 md:border-t-0 md:border-r-4 ${borderColorClass} shadow-2xl max-h-[80vh] md:h-[calc(100vh-6rem)] overflow-y-auto rounded-t-xl md:rounded-xl md:rounded-r-none transition-transform duration-300 ease-in-out`}>
       <div className="p-4 md:p-6">
         {/* Close button - adjusted for mobile hit area */}
         <button
@@ -493,7 +642,7 @@ export default function Sidebar({
             </div>
 
             <div className="prose prose-invert prose-sm mb-6">
-              <p dir={showTranslation ? 'ltr' : 'rtl'}>{displayDesc}</p>
+              <RichDescription text={displayDesc || ''} rtl={!showTranslation} />
             </div>
           </>
         )}

@@ -19,7 +19,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 # ============================================================================
 INGESTION_INTERVAL_MINUTES = int(os.getenv("INGESTION_INTERVAL_MINUTES", "15"))
 ENABLE_AUTO_INGESTION = os.getenv("ENABLE_AUTO_INGESTION", "true").lower() == "true"
-REPORT_MAX_AGE_HOURS = int(os.getenv("REPORT_MAX_AGE_HOURS", "12"))  # Delete reports older than this
+REPORT_MAX_AGE_HOURS = int(os.getenv("REPORT_MAX_AGE_HOURS", "168"))  # Delete reports older than 7 days (168h) to keep date-only sources like GeoConfirmed
 CLEANUP_INTERVAL_MINUTES = int(os.getenv("CLEANUP_INTERVAL_MINUTES", "30"))  # Run cleanup every 30 min
 
 # Global scheduler
@@ -675,7 +675,7 @@ def cluster_events(events: list, radius_km: float = DEFAULT_CLUSTER_RADIUS_KM) -
 @app.get("/api/events")
 def get_events(
     verified_only: bool = False,
-    hours: int = 12,  # Default to last 12 hours
+    hours: int = 24,  # Default to last 24 hours
     event_type: str = None,  # Filter by event type
     cluster: bool = True,  # Enable clustering by default
     cluster_radius: float = DEFAULT_CLUSTER_RADIUS_KM,  # Cluster radius in km

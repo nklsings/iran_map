@@ -10,7 +10,7 @@ Fetches geolocated event data from various OSINT sources:
 import requests
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Tuple
 from sqlalchemy.orm import Session
 from geoalchemy2.elements import WKTElement
@@ -23,13 +23,15 @@ class GeoConfirmedFetcher:
     Fetches data from GeoConfirmed.org
     
     GeoConfirmed is an OSINT verification platform that geolocates events.
-    Uses their internal Blazor API endpoint discovered via network inspection.
+    Uses their internal API discovered via network inspection.
+    
+    API Structure:
+    - List: GET /api/placemark/Iran?search= -> returns [{id, date, la, lo, icon}, ...]
+    - Detail: GET /api/placemark/Iran/{id} -> returns full placemark with description, sources
     """
     
     BASE_URL = "https://geoconfirmed.org"
-    
-    # Discovered API endpoint (Blazor WebAssembly backend)
-    PLACEMARK_API = "https://geoconfirmed.org/api/placemark/Iran"
+    COUNTRY = "Iran"
     
     def __init__(self):
         self.session = requests.Session()
@@ -37,40 +39,209 @@ class GeoConfirmedFetcher:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Referer': 'https://geoconfirmed.org/iran',
+            'Referer': f'https://geoconfirmed.org/{self.COUNTRY.lower()}',
             'Origin': 'https://geoconfirmed.org',
         })
     
-    def fetch_iran_data(self) -> List[Dict]:
-        """Fetch GeoConfirmed Iran data from their API"""
+    def fetch_iran_data(self, max_items: int = 100, days_limit: int = 7) -> List[Dict]:
+        """
+        Fetch GeoConfirmed Iran data from their API.
+        
+        First fetches the list of placemarks, then fetches details for each one
+        to get full description and source links.
+        
+        Args:
+            max_items: Maximum number of placemarks to fetch details for
+            days_limit: Only fetch events from the last N days (default: 7)
+                        Note: GeoConfirmed uses date-only timestamps, so we use days not hours.
+                        The API layer (/api/events?hours=168) handles display filtering.
+        """
         events = []
         
         print("  Fetching from GeoConfirmed API...")
         
         try:
-            # Main placemark API
-            response = self.session.get(
-                f"{self.PLACEMARK_API}?search=",
-                timeout=30
-            )
+            # Step 1: Get list of placemarks
+            list_url = f"{self.BASE_URL}/api/placemark/{self.COUNTRY}?search="
+            response = self.session.get(list_url, timeout=30)
             
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    events = self._parse_placemarks(data)
-                    print(f"    GeoConfirmed: fetched {len(events)} placemarks")
-                except json.JSONDecodeError as e:
-                    print(f"    GeoConfirmed: JSON decode error: {e}")
-            else:
+            if response.status_code != 200:
                 print(f"    GeoConfirmed: HTTP {response.status_code}")
+                return events
+            
+            try:
+                placemark_list = response.json()
+            except json.JSONDecodeError as e:
+                print(f"    GeoConfirmed: JSON decode error: {e}")
+                return events
+            
+            if not isinstance(placemark_list, list):
+                print(f"    GeoConfirmed: Unexpected response format")
+                return events
+            
+            print(f"    GeoConfirmed: found {len(placemark_list)} total placemarks")
+            
+            # Filter by date - only last N days (GeoConfirmed uses date-only timestamps)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(days=days_limit)
+            recent_placemarks = []
+            
+            for pm in placemark_list:
+                date_str = pm.get('date', '')
+                if date_str:
+                    try:
+                        # Parse date (format: "2026-01-11T00:00:00" or similar)
+                        pm_date = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                        # Make timezone-aware if not already
+                        if pm_date.tzinfo is None:
+                            pm_date = pm_date.replace(tzinfo=timezone.utc)
+                        
+                        if pm_date >= cutoff_time:
+                            recent_placemarks.append(pm)
+                    except (ValueError, TypeError):
+                        # If date parsing fails, still include it (might be valid)
+                        recent_placemarks.append(pm)
+            
+            print(f"    GeoConfirmed: {len(recent_placemarks)} placemarks from last {days_limit} days")
+            
+            if not recent_placemarks:
+                print(f"    GeoConfirmed: No recent events (all older than {days_limit} days)")
+                return events
+            
+            # Sort by date (most recent first)
+            recent_placemarks.sort(key=lambda x: x.get('date', ''), reverse=True)
+            
+            fetched_count = 0
+            for pm in recent_placemarks[:max_items]:
+                pm_id = pm.get('id')
+                if not pm_id:
+                    continue
+                
+                try:
+                    # Fetch full details
+                    detail_url = f"{self.BASE_URL}/api/placemark/{self.COUNTRY}/{pm_id}"
+                    detail_resp = self.session.get(detail_url, timeout=10)
+                    
+                    if detail_resp.status_code == 200:
+                        detail = detail_resp.json()
+                        if detail:  # Not empty
+                            event = self._parse_detailed_placemark(detail)
+                            if event:
+                                events.append(event)
+                                fetched_count += 1
+                except Exception as e:
+                    continue
+            
+            print(f"    GeoConfirmed: fetched {fetched_count} detailed placemarks")
                 
         except requests.exceptions.RequestException as e:
             print(f"    GeoConfirmed: Request error: {e}")
         
         return events
     
+    def _parse_detailed_placemark(self, pm: Dict) -> Optional[Dict]:
+        """
+        Parse a detailed placemark response from GeoConfirmed API.
+        
+        Expected format:
+        {
+            "id": "uuid",
+            "date": "2026-01-11T00:00:00",
+            "name": "11 JAN 2026",
+            "description": "Event description...",
+            "coordinates": [lat, lon],
+            "originalSource": "Vid1\nhttps://x.com/...\nVid2\nhttps://...",
+            "geolocation": "https://x.com/GeoConfirmed/...",
+            "plusCode": "G999+6RX Location, Province, Iran",
+            ...
+        }
+        """
+        # Get coordinates
+        coords = pm.get('coordinates', [])
+        if len(coords) < 2:
+            return None
+        
+        lat, lon = coords[0], coords[1]
+        
+        # Validate Iran region
+        if not (25 <= lat <= 40 and 44 <= lon <= 64):
+            return None
+        
+        # Get title (use name or generate from date)
+        title = pm.get('name') or pm.get('description', '')[:50] or 'GeoConfirmed Event'
+        
+        # Get description
+        description = pm.get('description') or ''
+        
+        # Extract source links
+        social_links = []
+        original_source = pm.get('originalSource') or ''
+        geolocation = pm.get('geolocation') or ''
+        
+        # Parse originalSource (contains X/Twitter links, one per line)
+        for line in original_source.split('\n'):
+            line = line.strip()
+            if line.startswith('http'):
+                if 'x.com' in line or 'twitter.com' in line:
+                    social_links.append(f"🐦 X/Twitter: {line}")
+                elif 't.me' in line:
+                    social_links.append(f"📱 Telegram: {line}")
+                elif 'youtube.com' in line or 'youtu.be' in line:
+                    social_links.append(f"📺 YouTube: {line}")
+                else:
+                    social_links.append(f"🔗 Source: {line}")
+        
+        # Parse geolocation (GeoConfirmed verification links)
+        gc_verification_link = None
+        for line in geolocation.split('\n'):
+            line = line.strip()
+            if line.startswith('http') and 'GeoConfirmed' in line:
+                gc_verification_link = line
+                break
+        
+        # Get first X/Twitter link as primary source
+        primary_source_url = None
+        for link in social_links:
+            if 'x.com' in link or 'twitter.com' in link:
+                match = re.search(r'https?://\S+', link)
+                if match:
+                    primary_source_url = match.group(0)
+                    break
+        
+        # Build enhanced description with links
+        enhanced_desc = description
+        if social_links:
+            enhanced_desc += "\n\n📎 Sources:\n" + "\n".join(social_links[:10])
+        
+        # Add GeoConfirmed verification link
+        gc_id = pm.get('id')
+        gc_url = f"https://geoconfirmed.org/{self.COUNTRY.lower()}#pm{gc_id}" if gc_id else None
+        if gc_url:
+            enhanced_desc += f"\n\n🌍 GeoConfirmed: {gc_url}"
+        
+        # Add Plus Code location if available
+        plus_code = pm.get('plusCode')
+        if plus_code:
+            enhanced_desc += f"\n📍 {plus_code}"
+        
+        # Get date - prefer dateCreated (has actual time) over date (midnight only)
+        date_str = pm.get('dateCreated') or pm.get('date')
+        
+        return {
+            'title': title,
+            'description': enhanced_desc,
+            'latitude': float(lat),
+            'longitude': float(lon),
+            'source': 'geoconfirmed',
+            'source_url': primary_source_url or gc_url or f"https://geoconfirmed.org/{self.COUNTRY.lower()}",
+            'category': 'verified',
+            'date': date_str,
+            'media_url': None,  # Could extract from sources if needed
+            'social_links': social_links,
+            'gc_id': gc_id,
+        }
+    
     def _parse_placemarks(self, data: any) -> List[Dict]:
-        """Parse the placemark response from GeoConfirmed API"""
+        """Parse the placemark response from GeoConfirmed API (basic list format)"""
         events = []
         
         # Handle different response formats
@@ -130,20 +301,97 @@ class GeoConfirmedFetcher:
         # Get event type/category
         category = props.get('category') or props.get('type') or props.get('icon')
         
-        # Get source URL
+        # === EXTRACT SOCIAL MEDIA LINKS ===
+        social_links = []
+        media_url = None
+        
+        # Check for links array (GeoConfirmed often has this)
+        links = props.get('links') or props.get('sources') or props.get('source_links') or []
+        if isinstance(links, str):
+            links = [links]
+        
+        # Also check for specific URL fields
+        for field in ['twitterUrl', 'twitter', 'xUrl', 'x', 'telegramUrl', 'telegram', 
+                      'sourceUrl', 'source', 'originalUrl', 'videoUrl', 'imageUrl',
+                      'link', 'url', 'media', 'mediaUrl']:
+            val = props.get(field)
+            if val and isinstance(val, str) and val.startswith('http'):
+                links.append(val)
+        
+        # Parse links and categorize them
+        for link in links:
+            if not isinstance(link, str):
+                continue
+            link = link.strip()
+            if not link.startswith('http'):
+                continue
+            
+            # Categorize link
+            if 'twitter.com' in link or 'x.com' in link:
+                social_links.append(f"🐦 X/Twitter: {link}")
+            elif 't.me' in link or 'telegram' in link.lower():
+                social_links.append(f"📱 Telegram: {link}")
+            elif 'youtube.com' in link or 'youtu.be' in link:
+                social_links.append(f"📺 YouTube: {link}")
+            elif 'instagram.com' in link:
+                social_links.append(f"📸 Instagram: {link}")
+            elif 'facebook.com' in link or 'fb.com' in link:
+                social_links.append(f"📘 Facebook: {link}")
+            elif any(ext in link.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                if not media_url:
+                    media_url = link
+            elif any(ext in link.lower() for ext in ['.mp4', '.webm', '.mov']):
+                if not media_url:
+                    media_url = link
+            else:
+                social_links.append(f"🔗 Source: {link}")
+        
+        # Also extract links from description using regex
+        url_pattern = r'https?://[^\s<>"\']+(?:\.[a-zA-Z]{2,})[^\s<>"\']*'
+        desc_links = re.findall(url_pattern, description)
+        for link in desc_links:
+            link = link.rstrip('.,;:!?)')
+            if 'twitter.com' in link or 'x.com' in link:
+                if f"🐦 X/Twitter: {link}" not in social_links:
+                    social_links.append(f"🐦 X/Twitter: {link}")
+            elif 't.me' in link:
+                if f"📱 Telegram: {link}" not in social_links:
+                    social_links.append(f"📱 Telegram: {link}")
+        
+        # Build enhanced description with links
+        enhanced_desc = description
+        if social_links:
+            enhanced_desc += "\n\n📎 Sources:\n" + "\n".join(social_links[:5])  # Limit to 5 links
+        
+        # Get main source URL (prefer X/Twitter if available)
         source_url = props.get('url') or props.get('source') or f"https://geoconfirmed.org/iran"
+        
+        # Check if there's an X/Twitter link to use as primary source
+        for link in (links if isinstance(links, list) else [links]):
+            if isinstance(link, str):
+                if 'x.com' in link or 'twitter.com' in link:
+                    source_url = link
+                    break
+        
         if props.get('id'):
-            source_url = f"https://geoconfirmed.org/iran#pm{props.get('id')}"
+            geoconfirmed_url = f"https://geoconfirmed.org/iran#pm{props.get('id')}"
+            if source_url == f"https://geoconfirmed.org/iran":
+                source_url = geoconfirmed_url
+            else:
+                # Add GeoConfirmed reference to description
+                enhanced_desc += f"\n\n🌍 GeoConfirmed: {geoconfirmed_url}"
         
         return {
             'title': title,
-            'description': description,
+            'description': enhanced_desc,
             'latitude': float(lat),
             'longitude': float(lon),
             'source': 'geoconfirmed',
             'source_url': source_url,
             'category': category,
             'date': date_str,
+            'media_url': media_url,
+            'social_links': social_links,
         }
     
     def parse_kml(self, kml_content: str) -> List[Dict]:
@@ -317,9 +565,29 @@ class OSINTService:
             if not (25 <= lat <= 40 and 44 <= lon <= 64):
                 return False
             
-            # Create source-tagged title
+            # Create source-tagged title with better date formatting
             source_tag = source.upper().replace('_', ' ')
-            tagged_title = f"[{source_tag}] {title[:150]}"
+            
+            # Format title - if it's just a date like "08 JAN 2026", make it more descriptive
+            date_str = event.get('date')
+            if date_str:
+                try:
+                    event_dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    if event_dt.tzinfo is None:
+                        event_dt = event_dt.replace(tzinfo=timezone.utc)
+                    # Format as "Today HH:MM" or "Yesterday HH:MM" or "DD MMM HH:MM"
+                    now = datetime.now(timezone.utc)
+                    if event_dt.date() == now.date():
+                        time_str = f"Today {event_dt.strftime('%H:%M')}"
+                    elif event_dt.date() == (now - timedelta(days=1)).date():
+                        time_str = f"Yesterday {event_dt.strftime('%H:%MM')}"
+                    else:
+                        time_str = event_dt.strftime('%d %b %H:%M')
+                    tagged_title = f"[{source_tag}] {time_str} - {title[:120]}"
+                except (ValueError, TypeError):
+                    tagged_title = f"[{source_tag}] {title[:150]}"
+            else:
+                tagged_title = f"[{source_tag}] {title[:150]}"
             
             # Check for duplicates by source-tagged title + location
             existing = self.db.query(models.ProtestEvent).filter(
@@ -344,22 +612,48 @@ class OSINTService:
             # Determine event type from content
             event_type = self._detect_event_type(event)
             
-            # Get source URL
+            # Get source URL (prefer X/Twitter link if available from GeoConfirmed)
             source_url = event.get('source_url') or event.get('url') or f"https://geoconfirmed.org/iran"
+            
+            # Get media URL if available
+            media_url = event.get('media_url')
+            media_type = None
+            if media_url:
+                if any(ext in media_url.lower() for ext in ['.mp4', '.webm', '.mov']):
+                    media_type = 'video'
+                elif any(ext in media_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                    media_type = 'image'
+            
+            # Parse event date if available, otherwise use current time
+            event_timestamp = datetime.now(timezone.utc)
+            date_str = event.get('date')
+            if date_str:
+                try:
+                    event_timestamp = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    if event_timestamp.tzinfo is None:
+                        event_timestamp = event_timestamp.replace(tzinfo=timezone.utc)
+                except (ValueError, TypeError):
+                    pass  # Keep default timestamp
+            
+            # Get intensity and verified status
+            intensity = event.get('intensity', 0.8)
+            verified = event.get('verified', True)
             
             # Create the event
             db_event = models.ProtestEvent(
                 title=tagged_title,
-                description=event.get('description', '')[:500],
+                description=event.get('description', '')[:1000],  # Increased for links
                 latitude=lat,
                 longitude=lon,
                 location=WKTElement(f'POINT({lon} {lat})', srid=4326),
-                intensity_score=0.8,  # OSINT/verified data is high-value
-                verified=True,  # GeoConfirmed data is verified
-                timestamp=datetime.now(timezone.utc),
+                intensity_score=intensity,
+                verified=verified,
+                timestamp=event_timestamp,  # Use actual event date
                 event_type=event_type,
-                source_platform="multiple",
+                source_platform=source,
                 source_url=source_url,
+                media_url=media_url,
+                media_type=media_type,
             )
             self.db.add(db_event)
             return True

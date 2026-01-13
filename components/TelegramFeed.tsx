@@ -152,7 +152,7 @@ export default function TelegramFeed({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed left-0 top-0 h-full w-96 bg-gray-900/95 backdrop-blur-sm border-r border-gray-700 z-50 flex flex-col shadow-2xl">
+    <div className="fixed left-0 top-0 md:top-20 h-full md:h-[calc(100vh-5rem)] w-96 bg-gray-900/95 backdrop-blur-sm border-r border-gray-700 z-50 flex flex-col shadow-2xl transition-all duration-300">
       {/* Header */}
       <div className="p-4 border-b border-gray-700 flex items-center justify-between bg-gray-800/50">
         <div className="flex items-center gap-2">

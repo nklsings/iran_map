@@ -40,7 +40,7 @@ steps:
       - '--add-cloudsql-instances'
       - '${_CLOUD_SQL_INSTANCE}'
       - '--set-env-vars'
-      - 'DATABASE_URL=${_DATABASE_URL},CRON_SECRET=${_CRON_SECRET}'
+      - 'DATABASE_URL=${_DATABASE_URL},CRON_SECRET=${_CRON_SECRET},REPORT_MAX_AGE_HOURS=168,OPENAI_API_KEY=${_OPENAI_API_KEY},CHECKWX_API_KEY=${_CHECKWX_API_KEY}'
       - '--memory'
       - '1Gi'
       - '--cpu'
@@ -57,6 +57,8 @@ substitutions:
   _CLOUD_SQL_INSTANCE: ''  # Set via trigger: PROJECT_ID:REGION:INSTANCE_NAME
   _DATABASE_URL: ''        # Set via trigger or Secret Manager
   _CRON_SECRET: ''         # Set via trigger or Secret Manager
+  _OPENAI_API_KEY: ''      # Set via trigger or Secret Manager (for AI summaries)
+  _CHECKWX_API_KEY: ''     # Set via trigger or Secret Manager (for NOTAM data)
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -16,11 +16,29 @@ const INITIAL_VIEW_STATE = {
   bearing: 0
 };
 
-// Map style options:
-// - dark-matter: Very dark (default CartoDB)
-// - alidade_smooth_dark: Slightly lighter dark gray (Stadia)
-// - dark-matter-nolabels: Dark without labels
-const MAP_STYLE = "https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json";
+// Map style options
+export type MapStyleName = 'dark' | 'light' | 'satellite';
+
+export const MAP_STYLES: Record<MapStyleName, { url: string; label: string; icon: string }> = {
+  dark: {
+    url: "https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json",
+    label: "Dark",
+    icon: "🌙"
+  },
+  light: {
+    url: "https://tiles.stadiamaps.com/styles/alidade_smooth.json",
+    label: "Light",
+    icon: "☀️"
+  },
+  satellite: {
+    // Using Stadia Alidade Satellite (hybrid with labels)
+    url: "https://tiles.stadiamaps.com/styles/alidade_satellite.json",
+    label: "Satellite",
+    icon: "🛰️"
+  },
+};
+
+const DEFAULT_MAP_STYLE: MapStyleName = 'dark';
 
 // Color scheme for different event types
 const EVENT_COLORS = {
@@ -74,6 +92,7 @@ interface MapProps {
   connectivityData?: ProvinceConnectivity[];
   showConnectivity?: boolean;
   onConnectivityClick?: (province: ProvinceConnectivity) => void;
+  mapStyle?: MapStyleName;
 }
 
 export default function Map({ 
@@ -85,9 +104,13 @@ export default function Map({
   onAirspaceClick,
   connectivityData = [],
   showConnectivity = false,
-  onConnectivityClick
+  onConnectivityClick,
+  mapStyle = DEFAULT_MAP_STYLE
 }: MapProps) {
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
+  
+  // Get current map style URL
+  const currentMapStyle = MAP_STYLES[mapStyle]?.url || MAP_STYLES.dark.url;
 
   // Separate events by type for different heatmap colors
   const { protestEvents, policeEvents } = useMemo(() => {
@@ -279,7 +302,7 @@ export default function Map({
         layers={layers}
       >
         <ReactMap
-          mapStyle={MAP_STYLE}
+          mapStyle={currentMapStyle}
           reuseMaps
         />
       </DeckGL>

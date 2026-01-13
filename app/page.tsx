@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import Map from '../components/Map';
+import Map, { MapStyleName, MAP_STYLES } from '../components/Map';
 import Sidebar from '../components/Sidebar';
 import TelegramFeed from '../components/TelegramFeed';
 import { ProtestEvent, FeatureCollection, Stats, MEDIA_SOURCES, OSINT_SOURCES, OTHER_SOURCES, getEventSourceId, AirspaceEvent, AirspaceCollection, ProvinceConnectivity, ConnectivityCollection, CONNECTIVITY_STATUS_CONFIG } from '../lib/types';
-import { RefreshCw, Filter, ChevronDown, ChevronUp, Radio, BarChart3 } from 'lucide-react';
+import { RefreshCw, Filter, ChevronDown, ChevronUp, Radio, BarChart3, Map as MapIcon, Menu, X, Layers, Shield, Globe, Loader2 } from 'lucide-react';
 
 type ViewMode = 'all' | 'verified' | 'ppu';
 
@@ -18,6 +18,7 @@ export default function Home() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [showSourceFilter, setShowSourceFilter] = useState(false);
@@ -28,6 +29,9 @@ export default function Home() {
   const [nationalConnectivity, setNationalConnectivity] = useState<{score: number; status: string} | null>(null);
   const [selectedProvince, setSelectedProvince] = useState<ProvinceConnectivity | null>(null);
   const [showTelegramFeed, setShowTelegramFeed] = useState(false);
+  const [mapStyle, setMapStyle] = useState<MapStyleName>('dark');
+  const [showMapStylePicker, setShowMapStylePicker] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [enabledSources, setEnabledSources] = useState<Record<string, boolean>>(() => {
     // Initialize from source definitions
     const initial: Record<string, boolean> = {};
@@ -69,7 +73,7 @@ export default function Home() {
   const fetchData = useCallback(async (showSpinner = true) => {
     if (showSpinner) setIsRefreshing(true);
     
-    let eventUrl = `${API_URL}/api/events?hours=12`;
+    let eventUrl = `${API_URL}/api/events?hours=24`; // Last 24 hours
     
     if (viewMode === 'verified') {
       eventUrl += '&verified_only=true';
@@ -82,7 +86,7 @@ export default function Home() {
       // fetch_new=true will fetch real NOTAMs if the database is empty
       const [eventsRes, statsRes, airspaceRes, connectivityRes] = await Promise.all([
         fetch(eventUrl),
-        fetch(`${API_URL}/api/stats?hours=12`),
+        fetch(`${API_URL}/api/stats?hours=24`),
         fetch(`${API_URL}/api/airspace?active_only=true&fetch_new=true`),
         fetch(`${API_URL}/api/connectivity`)
       ]);
@@ -121,6 +125,7 @@ export default function Home() {
       console.error("Failed to fetch data", err);
     } finally {
       setIsRefreshing(false);
+      setIsInitialLoad(false);
     }
   }, [viewMode, API_URL]);
 
@@ -149,8 +154,54 @@ export default function Home() {
     return `${minutes}m ago`;
   };
 
+  const sourceListContent = (
+    <div className="space-y-4">
+      {/* Media Sources */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">📺 Media / Channels</h3>
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-1.5">
+          {MEDIA_SOURCES.map((source) => (
+            <label key={source.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-zinc-800/50 p-2 rounded transition-colors bg-zinc-900/30 border border-zinc-800/50">
+              <input type="checkbox" checked={enabledSources[source.id] ?? source.enabled} onChange={() => toggleSource(source.id)} className="w-3.5 h-3.5 rounded border-zinc-600 bg-zinc-800 text-red-500 focus:ring-red-500 focus:ring-offset-0" />
+              <span className={enabledSources[source.id] ? 'text-white' : 'text-gray-500'}>{source.name}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      
+      {/* OSINT Sources */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">🔍 OSINT / Verification / Safety</h3>
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-1.5">
+          {OSINT_SOURCES.map((source) => (
+            <label key={source.id} className={`flex items-center gap-2 text-xs cursor-pointer p-2 rounded transition-colors bg-zinc-900/30 border border-zinc-800/50 ${source.enabled ? 'hover:bg-zinc-800/50' : 'opacity-50'}`}>
+              <input type="checkbox" checked={enabledSources[source.id] ?? source.enabled} onChange={() => source.enabled && toggleSource(source.id)} disabled={!source.enabled} className="w-3.5 h-3.5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0" />
+              <span className={enabledSources[source.id] && source.enabled ? 'text-white' : 'text-gray-500'}>
+                {source.icon && <span className="mr-1">{source.icon}</span>}
+                {source.name}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+      
+      {/* Other Sources */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">📡 Other Sources</h3>
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-1.5">
+          {OTHER_SOURCES.map((source) => (
+            <label key={source.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-zinc-800/50 p-2 rounded transition-colors bg-zinc-900/30 border border-zinc-800/50">
+              <input type="checkbox" checked={enabledSources[source.id] ?? source.enabled} onChange={() => toggleSource(source.id)} className="w-3.5 h-3.5 rounded border-zinc-600 bg-zinc-800 text-purple-500 focus:ring-purple-500 focus:ring-offset-0" />
+              <span className={enabledSources[source.id] ? 'text-white' : 'text-gray-500'}>{source.name}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <main className="relative w-screen h-screen bg-black overflow-hidden">
+    <main className="relative w-screen h-screen bg-black overflow-hidden font-sans">
       <Map 
         events={filteredEvents} 
         onEventClick={setSelectedEvent}
@@ -160,170 +211,329 @@ export default function Home() {
         connectivityData={connectivityData}
         showConnectivity={showConnectivity}
         onConnectivityClick={setSelectedProvince}
+        mapStyle={mapStyle}
       />
       
-      {/* Sidebar acts as both the stats panel (when nothing selected) and detail view */}
+      {/* Loading Overlay */}
+      {(isInitialLoad || isRefreshing) && (
+        <div className={`absolute inset-0 z-30 flex items-center justify-center pointer-events-none transition-opacity duration-300 ${isInitialLoad ? 'bg-black/80' : 'bg-transparent'}`}>
+          <div className={`flex flex-col items-center gap-4 ${isInitialLoad ? 'scale-100' : 'absolute bottom-24 left-1/2 -translate-x-1/2'}`}>
+            <div className={`relative ${isInitialLoad ? '' : 'bg-zinc-900/90 backdrop-blur px-4 py-2 rounded-full border border-zinc-700 shadow-lg'}`}>
+              <div className="flex items-center gap-3">
+                <Loader2 className={`${isInitialLoad ? 'w-8 h-8' : 'w-4 h-4'} text-red-500 animate-spin`} />
+                <span className={`${isInitialLoad ? 'text-lg' : 'text-xs'} font-medium text-white`}>
+                  {isInitialLoad ? 'Loading data...' : 'Refreshing...'}
+                </span>
+              </div>
+            </div>
+            {isInitialLoad && (
+              <p className="text-sm text-gray-500 animate-pulse">Fetching latest reports</p>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Sidebar */}
       <Sidebar 
         event={selectedEvent} 
         onClose={() => setSelectedEvent(null)}
         stats={stats}
+        isLoading={isInitialLoad}
       />
       
-      {/* Telegram Live Feed Panel */}
+      {/* Telegram Feed */}
       <TelegramFeed 
         isOpen={showTelegramFeed}
         onClose={() => setShowTelegramFeed(false)}
       />
       
-      {/* Refresh Button - Top Right */}
-      <div className="absolute top-4 right-4 md:right-[420px] z-20 flex items-center gap-2">
-        {/* Telegram Live Feed Toggle */}
-        <button
-          onClick={() => setShowTelegramFeed(!showTelegramFeed)}
-          className={`flex items-center gap-2 bg-zinc-900/90 backdrop-blur border px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-            showTelegramFeed 
-              ? 'border-blue-600 text-blue-400 hover:bg-blue-900/20' 
-              : 'border-zinc-700 text-white hover:bg-zinc-800'
-          }`}
-          title="Toggle Telegram Live Feed"
-        >
-          <Radio className={`w-4 h-4 ${showTelegramFeed ? 'animate-pulse' : ''}`} />
-          <span className="hidden md:inline">Feed</span>
-        </button>
+      {/* --- DESKTOP TOP BAR --- */}
+      <div className="hidden md:flex absolute top-4 left-4 right-4 z-20 justify-between items-start pointer-events-none">
+        {/* Left Controls Group */}
+        <div className="pointer-events-auto flex flex-col gap-2">
+          <div className="flex gap-2">
+            {/* View Mode Group */}
+            <div className="flex items-center bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-lg p-1 gap-1 shadow-lg">
+              <button 
+                onClick={() => setViewMode('all')}
+                className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-colors ${viewMode === 'all' ? 'bg-red-900/50 text-red-400 shadow-sm' : 'text-gray-500 hover:text-white hover:bg-zinc-800'}`}
+              >
+                All
+              </button>
+              <button 
+                onClick={() => setViewMode('ppu')}
+                className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-colors ${viewMode === 'ppu' ? 'bg-blue-900/50 text-blue-400 shadow-sm' : 'text-gray-500 hover:text-white hover:bg-zinc-800'}`}
+              >
+                PPU
+              </button>
+              <button 
+                onClick={() => setViewMode('verified')}
+                className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-colors ${viewMode === 'verified' ? 'bg-white/10 text-white shadow-sm' : 'text-gray-500 hover:text-white hover:bg-zinc-800'}`}
+              >
+                Verified
+              </button>
+            </div>
+            
+            {/* Source Filter Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowSourceFilter(!showSourceFilter)}
+                className={`flex items-center gap-2 h-full bg-zinc-900/90 backdrop-blur border px-3 py-2 rounded-lg text-xs font-medium transition-all hover:bg-zinc-800 shadow-lg ${
+                  filterCount ? 'border-amber-600 text-amber-400' : 'border-zinc-700 text-white'
+                }`}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>Sources</span>
+                {filterCount && <span className="bg-amber-600/20 text-amber-400 px-1.5 py-0.5 rounded text-[10px] font-bold">{filterCount}</span>}
+              </button>
+              
+              {showSourceFilter && (
+                <div className="absolute top-full left-0 mt-2 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-xl p-4 max-h-[70vh] overflow-y-auto w-80 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex justify-between items-center mb-4 pb-2 border-b border-zinc-800">
+                    <span className="text-sm font-bold text-white">Filter Sources</span>
+                    <button onClick={() => setShowSourceFilter(false)}><X className="w-4 h-4 text-zinc-500 hover:text-white"/></button>
+                  </div>
+                  {sourceListContent}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
         
-        {/* Analytics Dashboard Link */}
-        <a
-          href="/analytics"
-          className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all text-white hover:bg-zinc-800 hover:border-purple-600 hover:text-purple-400"
-          title="View City Analytics"
-        >
-          <BarChart3 className="w-4 h-4" />
-          <span className="hidden md:inline">Analytics</span>
-        </a>
-        
-        <button
-          onClick={() => fetchData(true)}
-          disabled={isRefreshing}
-          className={`flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all hover:bg-zinc-800 ${
-            isRefreshing ? 'text-gray-500' : 'text-white'
-          }`}
-          title="Refresh data"
-        >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          <span className="hidden md:inline">
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
-          </span>
-        </button>
-        
-        {/* Auto-refresh toggle */}
-        <button
-          onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
-          className={`flex items-center gap-1.5 bg-zinc-900/90 backdrop-blur border px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-            autoRefreshEnabled 
-              ? 'border-green-700 text-green-400 hover:bg-green-900/20' 
-              : 'border-zinc-700 text-gray-500 hover:text-white hover:bg-zinc-800'
-          }`}
-          title={autoRefreshEnabled ? 'Auto-refresh ON (2min)' : 'Auto-refresh OFF'}
-        >
-          <span className={`w-2 h-2 rounded-full ${autoRefreshEnabled ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`} />
-          <span className="hidden md:inline">Auto</span>
-        </button>
-        
-        {/* Last refresh time */}
-        {lastRefresh && (
-          <span className="hidden md:block text-xs text-gray-500">
-            {getRefreshText()}
-          </span>
-        )}
-      </div>
-
-      {/* Layer Toggles */}
-      <div className="absolute bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 flex flex-wrap gap-2 md:gap-3 z-10 w-full md:w-auto px-4 justify-center">
-        <button 
-          className={`bg-zinc-900/90 backdrop-blur border px-3 md:px-5 py-2 rounded-full uppercase text-[10px] md:text-xs font-bold tracking-widest transition-all whitespace-nowrap ${
-            viewMode === 'all' 
-              ? 'text-red-500 border-red-900/50 hover:bg-red-900/20 shadow-[0_0_15px_rgba(220,38,38,0.3)]' 
-              : 'text-gray-500 border-gray-800 hover:text-white'
-          }`}
-          onClick={() => setViewMode('all')}
-        >
-          🔴 All Events
-        </button>
-        <button 
-          className={`bg-zinc-900/90 backdrop-blur border px-3 md:px-5 py-2 rounded-full uppercase text-[10px] md:text-xs font-bold tracking-widest transition-all whitespace-nowrap ${
-            viewMode === 'ppu' 
-              ? 'text-blue-400 border-blue-900/50 hover:bg-blue-900/20 shadow-[0_0_15px_rgba(59,130,246,0.3)]' 
-              : 'text-gray-500 border-gray-800 hover:text-white'
-          }`}
-          onClick={() => setViewMode('ppu')}
-        >
-          🚨 PPU Only
-          {stats?.police_presence ? (
-            <span className="ml-1 text-blue-300">({stats.police_presence})</span>
-          ) : null}
-        </button>
-        <button 
-          className={`bg-zinc-900/90 backdrop-blur border px-3 md:px-5 py-2 rounded-full uppercase text-[10px] md:text-xs font-bold tracking-widest transition-all whitespace-nowrap ${
-            viewMode === 'verified' 
-              ? 'text-white border-white/50 bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.2)]' 
-              : 'text-gray-500 border-gray-800 hover:text-white'
-          }`}
-          onClick={() => setViewMode('verified')}
-        >
-          ✓ Verified
-        </button>
-        <button 
-          className={`bg-zinc-900/90 backdrop-blur border px-3 md:px-5 py-2 rounded-full uppercase text-[10px] md:text-xs font-bold tracking-widest transition-all whitespace-nowrap ${
-            showAirspace 
-              ? 'text-cyan-400 border-cyan-900/50 hover:bg-cyan-900/20 shadow-[0_0_15px_rgba(6,182,212,0.3)]' 
-              : 'text-gray-500 border-gray-800 hover:text-white'
-          }`}
-          onClick={() => setShowAirspace(!showAirspace)}
-          title="Toggle NOTAM airspace restrictions"
-        >
-          ✈️ NOTAMs
-          {airspaceData.length > 0 && (
-            <span className="ml-1 text-cyan-300">({airspaceData.length})</span>
-          )}
-        </button>
-        <button 
-          className={`bg-zinc-900/90 backdrop-blur border px-3 md:px-5 py-2 rounded-full uppercase text-[10px] md:text-xs font-bold tracking-widest transition-all whitespace-nowrap ${
-            showConnectivity 
-              ? 'text-green-400 border-green-900/50 hover:bg-green-900/20 shadow-[0_0_15px_rgba(34,197,94,0.3)]' 
-              : 'text-gray-500 border-gray-800 hover:text-white'
-          }`}
-          onClick={() => setShowConnectivity(!showConnectivity)}
-          title="Toggle internet connectivity layer"
-        >
-          📶 Internet
-          {nationalConnectivity && (
-            <span className={`ml-1 ${
-              nationalConnectivity.status === 'normal' ? 'text-green-300' :
-              nationalConnectivity.status === 'degraded' ? 'text-yellow-300' :
-              nationalConnectivity.status === 'restricted' ? 'text-orange-300' :
-              nationalConnectivity.status === 'blackout' ? 'text-red-300' : 'text-gray-300'
-            }`}>
-              ({Math.round(nationalConnectivity.score * 100)}%)
-            </span>
-          )}
-        </button>
-        <a 
-          href="/summary"
-          className="bg-zinc-900/90 backdrop-blur border border-amber-800/50 px-3 md:px-5 py-2 rounded-full uppercase text-[10px] md:text-xs font-bold tracking-widest transition-all whitespace-nowrap text-amber-400 hover:bg-amber-900/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.3)]"
-          title="View AI-generated situation summary"
-        >
-          📊 Summary
-        </a>
+        {/* Right Controls Group */}
+        <div className="pointer-events-auto flex items-center gap-2">
+          {/* Feed Toggle */}
+          <button
+            onClick={() => setShowTelegramFeed(!showTelegramFeed)}
+            className={`flex items-center gap-2 bg-zinc-900/90 backdrop-blur border px-3 py-2 rounded-lg text-xs font-medium transition-all shadow-lg ${
+              showTelegramFeed ? 'border-blue-600 text-blue-400 bg-blue-900/20' : 'border-zinc-700 text-white hover:bg-zinc-800'
+            }`}
+          >
+            <Radio className={`w-3.5 h-3.5 ${showTelegramFeed ? 'animate-pulse' : ''}`} />
+            <span>Feed</span>
+          </button>
+          
+          {/* Analytics Link */}
+          <a href="/analytics" className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all text-white hover:bg-zinc-800 hover:border-violet-600 hover:text-violet-400 shadow-lg">
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Analytics</span>
+          </a>
+          
+          {/* Summary Link */}
+          <a href="/summary" className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all text-white hover:bg-zinc-800 hover:border-amber-600 hover:text-amber-400 shadow-lg">
+            <span className="text-sm">📊</span>
+            <span>Summary</span>
+          </a>
+          
+          <div className="w-px h-6 bg-zinc-800 mx-1"></div>
+          
+          {/* Refresh Button */}
+          <button
+            onClick={() => fetchData(true)}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all hover:bg-zinc-800 text-white shadow-lg"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+          
+          {/* Auto Toggle */}
+          <button
+            onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+            className={`flex items-center gap-1.5 bg-zinc-900/90 backdrop-blur border px-3 py-2 rounded-lg text-xs font-medium transition-all shadow-lg ${
+              autoRefreshEnabled ? 'border-green-700 text-green-400 bg-green-900/10' : 'border-zinc-700 text-gray-500 hover:text-white'
+            }`}
+          >
+            <div className={`w-1.5 h-1.5 rounded-full ${autoRefreshEnabled ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`} />
+            <span>Auto</span>
+          </button>
+        </div>
       </div>
       
-      {/* Connectivity Province Info Popup */}
+      {/* --- DESKTOP BOTTOM BAR (Layers) --- */}
+      <div className="hidden md:flex absolute bottom-8 left-1/2 -translate-x-1/2 z-20 pointer-events-auto items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 p-1.5 rounded-full shadow-2xl">
+        <button 
+          className={`px-4 py-1.5 rounded-full uppercase text-[10px] font-bold tracking-widest transition-all whitespace-nowrap flex items-center gap-2 ${
+            showAirspace ? 'bg-cyan-900/30 text-cyan-400 shadow-inner' : 'text-gray-500 hover:text-white hover:bg-zinc-800'
+          }`}
+          onClick={() => setShowAirspace(!showAirspace)}
+        >
+          <span>✈️ NOTAMs</span>
+          {airspaceData.length > 0 && <span className="text-cyan-500 text-[9px] bg-cyan-900/50 px-1 rounded">{airspaceData.length}</span>}
+        </button>
+        
+        <div className="w-px h-4 bg-zinc-700"></div>
+        
+        <button 
+          className={`px-4 py-1.5 rounded-full uppercase text-[10px] font-bold tracking-widest transition-all whitespace-nowrap flex items-center gap-2 ${
+            showConnectivity ? 'bg-green-900/30 text-green-400 shadow-inner' : 'text-gray-500 hover:text-white hover:bg-zinc-800'
+          }`}
+          onClick={() => setShowConnectivity(!showConnectivity)}
+        >
+          <span>📶 Internet</span>
+          {nationalConnectivity && <span className="text-green-500 text-[9px] bg-green-900/50 px-1 rounded">{Math.round(nationalConnectivity.score * 100)}%</span>}
+        </button>
+        
+        <div className="w-px h-4 bg-zinc-700"></div>
+        
+        {/* Map Style Picker */}
+        <div className="relative group">
+          <button className="px-4 py-1.5 rounded-full uppercase text-[10px] font-bold tracking-widest text-gray-400 hover:text-white hover:bg-zinc-800 transition-all flex items-center gap-2">
+            <span>{MAP_STYLES[mapStyle].icon} Map Style</span>
+          </button>
+          
+          {/* Hover Menu */}
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-40 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-xl overflow-hidden shadow-xl invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-200 p-1">
+            {(Object.entries(MAP_STYLES) as [MapStyleName, typeof MAP_STYLES[MapStyleName]][]).map(([key, style]) => (
+              <button
+                key={key}
+                className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 rounded-lg transition-colors ${mapStyle === key ? 'bg-zinc-800 text-white' : 'text-gray-400 hover:bg-zinc-800/50 hover:text-gray-200'}`}
+                onClick={() => setMapStyle(key)}
+              >
+                <span>{style.icon}</span>
+                <span>{style.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      
+      {/* --- MOBILE LAYOUT --- */}
+      <div className="md:hidden absolute top-4 left-4 right-4 z-20 flex justify-between items-center pointer-events-none">
+        <button onClick={() => setIsMenuOpen(true)} className="pointer-events-auto bg-zinc-900/90 p-3 rounded-xl text-white border border-zinc-700 shadow-lg backdrop-blur active:scale-95 transition-transform">
+          <Menu className="w-6 h-6" />
+        </button>
+        
+        <button onClick={() => fetchData(true)} className={`pointer-events-auto bg-zinc-900/90 p-3 rounded-xl text-white border border-zinc-700 shadow-lg backdrop-blur active:scale-95 transition-transform ${isRefreshing ? 'opacity-75' : ''}`}>
+          <RefreshCw className={`w-6 h-6 ${isRefreshing ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      {/* Mobile Menu Drawer */}
+      {isMenuOpen && (
+        <div className="fixed inset-0 z-50 bg-zinc-950/95 backdrop-blur-xl flex flex-col animate-in fade-in slide-in-from-left-4 duration-200">
+          <div className="flex justify-between items-center p-6 border-b border-zinc-800">
+            <h2 className="text-xl font-bold text-white tracking-tight">Iran Map Control</h2>
+            <button onClick={() => setIsMenuOpen(false)} className="p-2 text-zinc-400 hover:text-white bg-zinc-900 rounded-lg border border-zinc-800">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-6 space-y-8">
+            {/* View Mode Section */}
+            <section className="space-y-3">
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">View Mode</h3>
+              <div className="grid grid-cols-3 gap-2">
+                <button 
+                  onClick={() => setViewMode('all')} 
+                  className={`p-3 rounded-xl text-sm font-bold border transition-all ${viewMode === 'all' ? 'bg-red-500/10 border-red-500/50 text-red-400' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}
+                >
+                  All Events
+                </button>
+                <button 
+                  onClick={() => setViewMode('ppu')} 
+                  className={`p-3 rounded-xl text-sm font-bold border transition-all ${viewMode === 'ppu' ? 'bg-blue-500/10 border-blue-500/50 text-blue-400' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}
+                >
+                  PPU Only
+                </button>
+                <button 
+                  onClick={() => setViewMode('verified')} 
+                  className={`p-3 rounded-xl text-sm font-bold border transition-all ${viewMode === 'verified' ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}
+                >
+                  Verified
+                </button>
+              </div>
+            </section>
+            
+            {/* Layers Section */}
+            <section className="space-y-3">
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Map Layers</h3>
+              <div className="grid grid-cols-1 gap-2">
+                <button 
+                  onClick={() => setShowAirspace(!showAirspace)}
+                  className={`flex items-center justify-between p-4 rounded-xl border transition-all ${showAirspace ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-zinc-900 border-zinc-800'}`}
+                >
+                  <span className="flex items-center gap-3 text-sm font-medium text-zinc-200">
+                    <span className="text-xl">✈️</span> NOTAM Restrictions
+                  </span>
+                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${showAirspace ? 'bg-cyan-500 border-cyan-500' : 'border-zinc-600'}`}>
+                    {showAirspace && <div className="w-2 h-2 bg-white rounded-full" />}
+                  </div>
+                </button>
+                
+                <button 
+                  onClick={() => setShowConnectivity(!showConnectivity)}
+                  className={`flex items-center justify-between p-4 rounded-xl border transition-all ${showConnectivity ? 'bg-green-500/10 border-green-500/30' : 'bg-zinc-900 border-zinc-800'}`}
+                >
+                  <span className="flex items-center gap-3 text-sm font-medium text-zinc-200">
+                    <span className="text-xl">📶</span> Internet Connectivity
+                  </span>
+                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${showConnectivity ? 'bg-green-500 border-green-500' : 'border-zinc-600'}`}>
+                    {showConnectivity && <div className="w-2 h-2 bg-white rounded-full" />}
+                  </div>
+                </button>
+              </div>
+            </section>
+            
+            {/* Map Style Section */}
+            <section className="space-y-3">
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Map Style</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.entries(MAP_STYLES) as [MapStyleName, typeof MAP_STYLES[MapStyleName]][]).map(([key, style]) => (
+                  <button
+                    key={key}
+                    onClick={() => setMapStyle(key)}
+                    className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all ${mapStyle === key ? 'bg-purple-500/10 border-purple-500/50 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}
+                  >
+                    <span className="text-2xl">{style.icon}</span>
+                    <span className="text-xs font-medium">{style.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+            
+            {/* Tools Links */}
+            <section className="space-y-3">
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Tools & Analysis</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <a href="/analytics" className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col gap-2 hover:bg-zinc-800 transition-colors">
+                  <BarChart3 className="w-6 h-6 text-violet-400" />
+                  <span className="text-sm font-bold text-white">Analytics Dashboard</span>
+                </a>
+                <a href="/summary" className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col gap-2 hover:bg-zinc-800 transition-colors">
+                  <span className="text-2xl">📊</span>
+                  <span className="text-sm font-bold text-white">AI Summary</span>
+                </a>
+              </div>
+              
+               <button 
+                  onClick={() => setShowTelegramFeed(!showTelegramFeed)}
+                  className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${showTelegramFeed ? 'bg-blue-500/10 border-blue-500/30' : 'bg-zinc-900 border-zinc-800'}`}
+                >
+                  <Radio className={`w-5 h-5 ${showTelegramFeed ? 'text-blue-400 animate-pulse' : 'text-zinc-500'}`} />
+                  <span className="text-sm font-bold text-zinc-200">Telegram Live Feed</span>
+                </button>
+            </section>
+            
+            {/* Source Filters */}
+            <section className="space-y-3 pt-4 border-t border-zinc-800">
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Data Sources</h3>
+              <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800">
+                {sourceListContent}
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* Popups */}
       {selectedProvince && showConnectivity && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-xl p-4 shadow-xl max-w-sm">
+        <div className="absolute top-20 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:right-auto z-30 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-xl p-4 shadow-xl max-w-sm mx-auto">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-bold text-white">{selectedProvince.properties.name}</h3>
             <button 
               onClick={() => setSelectedProvince(null)}
-              className="text-zinc-400 hover:text-white text-lg"
+              className="text-zinc-400 hover:text-white text-lg w-8 h-8 flex items-center justify-center rounded-full hover:bg-zinc-800"
             >×</button>
           </div>
           <p className="text-zinc-400 text-sm mb-2">{selectedProvince.properties.name_fa}</p>
@@ -349,126 +559,6 @@ export default function Home() {
           </p>
         </div>
       )}
-
-      {/* Source Filter Panel */}
-      <div className="absolute bottom-32 md:bottom-20 left-4 z-10">
-        <button
-          onClick={() => setShowSourceFilter(!showSourceFilter)}
-          className={`flex items-center gap-2 bg-zinc-900/90 backdrop-blur border px-3 py-2 rounded-lg text-xs font-medium transition-all hover:bg-zinc-800 ${
-            filterCount ? 'border-amber-600 text-amber-400' : 'border-zinc-700 text-white'
-          }`}
-        >
-          <Filter className="w-4 h-4" />
-          <span className="hidden md:inline">Sources</span>
-          {filterCount && (
-            <span className="bg-amber-600/20 text-amber-400 px-1.5 py-0.5 rounded text-[10px] font-bold">
-              {filterCount}
-            </span>
-          )}
-          {showSourceFilter ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
-        </button>
-        
-        {showSourceFilter && (
-          <div className="mt-2 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-lg p-3 max-h-[60vh] overflow-y-auto w-64 md:w-72 shadow-xl">
-            {/* Media Sources */}
-            <div className="mb-4">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-                📺 Media / Channels
-              </h3>
-              <div className="space-y-1.5">
-                {MEDIA_SOURCES.map((source) => (
-                  <label
-                    key={source.id}
-                    className="flex items-center gap-2 text-xs cursor-pointer hover:bg-zinc-800/50 p-1.5 rounded transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={enabledSources[source.id] ?? source.enabled}
-                      onChange={() => toggleSource(source.id)}
-                      className="w-3.5 h-3.5 rounded border-zinc-600 bg-zinc-800 text-red-500 focus:ring-red-500 focus:ring-offset-0"
-                    />
-                    <span className={enabledSources[source.id] ? 'text-white' : 'text-gray-500'}>
-                      {source.name}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* OSINT / Verification / Safety Sources */}
-            <div className="mb-4">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-                🔍 OSINT / Verification / Safety
-              </h3>
-              <div className="space-y-1.5">
-                {OSINT_SOURCES.map((source) => (
-                  <label
-                    key={source.id}
-                    className={`flex items-center gap-2 text-xs cursor-pointer p-1.5 rounded transition-colors ${
-                      source.enabled ? 'hover:bg-zinc-800/50' : 'opacity-50 cursor-not-allowed'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={enabledSources[source.id] ?? source.enabled}
-                      onChange={() => source.enabled && toggleSource(source.id)}
-                      disabled={!source.enabled}
-                      className="w-3.5 h-3.5 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 disabled:opacity-50"
-                    />
-                    <span className={enabledSources[source.id] && source.enabled ? 'text-white' : 'text-gray-500'}>
-                      {source.icon && <span className="mr-1">{source.icon}</span>}
-                      {source.name}
-                      {source.category === 'verification' && (
-                        <span className="ml-1 text-[10px] text-emerald-400">(verification)</span>
-                      )}
-                      {source.category === 'safety' && (
-                        <span className="ml-1 text-[10px] text-amber-400">(safety)</span>
-                      )}
-                      {!source.enabled && (
-                        <span className="ml-1 text-[10px] text-gray-600">(disabled)</span>
-                      )}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Other Sources (platforms) */}
-            <div>
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-                📡 Other Sources
-              </h3>
-              <div className="space-y-1.5">
-                {OTHER_SOURCES.map((source) => (
-                  <label
-                    key={source.id}
-                    className="flex items-center gap-2 text-xs cursor-pointer hover:bg-zinc-800/50 p-1.5 rounded transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={enabledSources[source.id] ?? source.enabled}
-                      onChange={() => toggleSource(source.id)}
-                      className="w-3.5 h-3.5 rounded border-zinc-600 bg-zinc-800 text-purple-500 focus:ring-purple-500 focus:ring-offset-0"
-                    />
-                    <span className={enabledSources[source.id] ? 'text-white' : 'text-gray-500'}>
-                      {source.icon && <span className="mr-1">{source.icon}</span>}
-                      {source.name}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-3 pt-3 border-t border-zinc-800 text-[10px] text-gray-500">
-              {filterCount ? (
-                <span className="text-amber-400">Showing {filterCount} events</span>
-              ) : (
-                <span>Toggle sources to filter events on the map</span>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
     </main>
   );
 }
