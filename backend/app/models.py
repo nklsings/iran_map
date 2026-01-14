@@ -189,6 +189,51 @@ class TelegramMessage(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class TwitterMessage(Base):
+    """Twitter/X messages fetched via API with NLP analysis"""
+    __tablename__ = "twitter_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Tweet identification
+    tweet_id = Column(String, unique=True, index=True)
+    username = Column(String, index=True, nullable=False)
+    author_id = Column(String, nullable=True)
+    
+    # Content
+    text = Column(Text, nullable=False)
+    text_translated = Column(Text, nullable=True)  # English translation
+    
+    # Media (if any)
+    media_url = Column(String, nullable=True)
+    media_type = Column(String, nullable=True)
+    
+    # Timestamp
+    timestamp = Column(DateTime(timezone=True), index=True, server_default=func.now())
+    
+    # NLP extracted fields
+    sentiment = Column(String, nullable=True)
+    keywords = Column(Text, nullable=True)  # JSON array
+    locations_mentioned = Column(Text, nullable=True)  # JSON array
+    event_type_detected = Column(String, nullable=True)
+    urgency_score = Column(Float, default=0.5)
+    
+    # Engagement metrics
+    retweet_count = Column(Integer, default=0)
+    like_count = Column(Integer, default=0)
+    reply_count = Column(Integer, default=0)
+    
+    # Linked event (if created as protest_event)
+    linked_event_id = Column(Integer, ForeignKey("protest_events.id"), nullable=True)
+    
+    # Processing status
+    is_processed = Column(Boolean, default=False)
+    is_relevant = Column(Boolean, default=True)
+    
+    # Metadata
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 # ============================================================================
 # CITY ANALYTICS (Aggregated Statistics)
 # ============================================================================
@@ -233,4 +278,43 @@ class CityStatistics(Base):
     period_start = Column(DateTime(timezone=True), nullable=True)
     period_end = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# ============================================================================
+# DATA SOURCES (Dynamically Managed)
+# ============================================================================
+SOURCE_TYPE_TELEGRAM = "telegram"
+SOURCE_TYPE_RSS = "rss"
+SOURCE_TYPE_TWITTER = "twitter"
+SOURCE_TYPE_YOUTUBE = "youtube"
+SOURCE_TYPE_REDDIT = "reddit"
+SOURCE_TYPE_INSTAGRAM = "instagram"
+
+class DataSource(Base):
+    """Dynamically managed data sources for ingestion"""
+    __tablename__ = "data_sources"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Source identification
+    source_type = Column(String, index=True, nullable=False)  # telegram, rss, twitter, youtube, reddit, instagram
+    identifier = Column(String, index=True, nullable=False)  # channel name, feed URL, account handle, etc.
+    name = Column(String, nullable=True)  # Display name
+    
+    # Configuration
+    url = Column(String, nullable=True)  # Full URL (for RSS feeds)
+    reliability_score = Column(Float, default=0.7)  # 0.0 to 1.0
+    priority = Column(Integer, default=2)  # 1=high, 2=medium, 3=low
+    category = Column(String, nullable=True)  # news, human_rights, activist, osint, citizen_journalism
+    
+    # Status
+    is_active = Column(Boolean, default=True, index=True)
+    last_fetch_at = Column(DateTime(timezone=True), nullable=True)
+    last_fetch_status = Column(String, nullable=True)  # success, error, rate_limited
+    error_count = Column(Integer, default=0)
+    
+    # Metadata
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

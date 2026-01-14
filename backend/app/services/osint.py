@@ -476,14 +476,20 @@ class ArcGISFetcher:
             
             if response.status_code == 200:
                 data = response.json()
-                if 'features' in data:
+                if 'features' in data and data['features']:
                     for feature in data['features']:
-                        geom = feature.get('geometry', {})
-                        props = feature.get('properties', {})
+                        if not feature:
+                            continue
+                        geom = feature.get('geometry')
+                        props = feature.get('properties') or {}
+                        
+                        # Handle None geometry
+                        if not geom or not isinstance(geom, dict):
+                            continue
                         
                         if geom.get('type') == 'Point':
                             coords = geom.get('coordinates', [])
-                            if len(coords) >= 2:
+                            if coords and len(coords) >= 2:
                                 events.append({
                                     'latitude': coords[1],
                                     'longitude': coords[0],

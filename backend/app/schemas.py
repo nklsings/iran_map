@@ -127,6 +127,9 @@ class AirspaceGeoJSON(BaseModel):
 # ============================================================================
 class SituationSummaryBase(BaseModel):
     """Base schema for situation summaries"""
+    # Allow 'model_' prefix for model_used field
+    model_config = {"protected_namespaces": ()}
+    
     title: str
     summary: str
     key_developments: Optional[str] = None  # JSON string of key points
@@ -290,4 +293,70 @@ class AnalyticsSummary(BaseModel):
     top_cities: List[CityRanking]
     hourly_distribution: dict  # {"0": count, "1": count, ...}
     event_type_distribution: dict  # {"protest": count, "clash": count, ...}
+
+
+# ============================================================================
+# DATA SOURCE MANAGEMENT SCHEMAS
+# ============================================================================
+DataSourceType = Literal["telegram", "rss", "twitter", "youtube", "reddit", "instagram"]
+DataSourceCategory = Literal["news", "human_rights", "activist", "osint", "citizen_journalism", "government", "other"]
+
+
+class DataSourceBase(BaseModel):
+    """Base schema for data sources"""
+    source_type: str  # telegram, rss, twitter, youtube, reddit, instagram
+    identifier: str  # channel name, feed URL, account handle
+    name: Optional[str] = None  # Display name
+    url: Optional[str] = None  # Full URL (for RSS feeds)
+    reliability_score: float = 0.7
+    priority: int = 2  # 1=high, 2=medium, 3=low
+    category: Optional[str] = None  # news, human_rights, activist, osint
+    notes: Optional[str] = None
+
+
+class DataSourceCreate(DataSourceBase):
+    """Schema for creating a data source"""
+    admin_key: str  # Required authentication
+
+
+class DataSourceSuggest(BaseModel):
+    """Schema for public source suggestions"""
+    source_type: str
+    identifier: str
+    name: Optional[str] = None
+    url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DataSourceUpdate(BaseModel):
+    """Schema for updating a data source"""
+    name: Optional[str] = None
+    url: Optional[str] = None
+    reliability_score: Optional[float] = None
+    priority: Optional[int] = None
+    category: Optional[str] = None
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+    admin_key: str  # Required authentication
+
+
+class DataSourceResponse(DataSourceBase):
+    """Schema for data source response"""
+    id: int
+    is_active: bool
+    last_fetch_at: Optional[datetime] = None
+    last_fetch_status: Optional[str] = None
+    error_count: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class DataSourceListResponse(BaseModel):
+    """Response for listing data sources"""
+    sources: List[DataSourceResponse]
+    total_count: int
+    by_type: dict  # {"telegram": count, "rss": count, ...}
 

@@ -20,7 +20,7 @@ interface CityStats {
   events_7d: number;
   trend_direction: string;
   trend_percentage: number;
-  hourly_pattern: Record<number, number>;
+  hourly_pattern: Record<string, number>;  // JSON keys are always strings
   peak_hour: number | null;
   avg_daily_events: number;
   activity_level: string;
@@ -34,7 +34,7 @@ interface AnalyticsSummary {
   most_active_city: string | null;
   most_active_hour: number | null;
   top_cities: CityStats[];
-  hourly_distribution: Record<number, number>;
+  hourly_distribution: Record<string, number>;  // JSON keys are always strings
   event_type_distribution: Record<string, number>;
 }
 
@@ -69,13 +69,14 @@ function HourlyHeatmap({
   data,
   maxValue,
 }: {
-  data: Record<number, number>;
+  data: Record<string, number>;  // JSON keys are strings
   maxValue: number;
 }) {
   return (
     <div className="flex gap-0.5">
       {Array.from({ length: 24 }, (_, hour) => {
-        const count = data[hour] || 0;
+        // Access with string key since JSON keys are strings
+        const count = Number(data[String(hour)]) || 0;
         const intensity = maxValue > 0 ? count / maxValue : 0;
         const bg =
           intensity > 0.8
@@ -143,13 +144,17 @@ export default function AnalyticsPage() {
       setError(null);
 
       try {
-        const apiUrl =
-          process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
         const [summaryRes, citiesRes] = await Promise.all([
-          fetch(`${apiUrl}/api/analytics/summary`),
-          fetch(`${apiUrl}/api/analytics/cities?limit=30`),
+          fetch(`${apiUrl}/api/analytics/summary`, { signal: controller.signal }),
+          fetch(`${apiUrl}/api/analytics/cities?limit=30`, { signal: controller.signal }),
         ]);
+        
+        clearTimeout(timeoutId);
 
         if (!summaryRes.ok || !citiesRes.ok) {
           throw new Error('Failed to fetch analytics');
@@ -157,11 +162,20 @@ export default function AnalyticsPage() {
 
         const summaryData = await summaryRes.json();
         const citiesData = await citiesRes.json();
+        
+        // Handle warning responses
+        if (summaryData.warning || citiesData.warning) {
+          console.warn('Analytics warning:', summaryData.warning || citiesData.warning);
+        }
 
         setSummary(summaryData.summary);
-        setCities(citiesData.cities);
+        setCities(citiesData.cities || []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load');
+        if (err instanceof Error && err.name === 'AbortError') {
+          setError('Request timed out. Analytics service may be slow.');
+        } else {
+          setError(err instanceof Error ? err.message : 'Failed to load');
+        }
       } finally {
         setLoading(false);
       }
@@ -201,25 +215,29 @@ export default function AnalyticsPage() {
     );
   }
 
-  const maxHourly = summary
-    ? Math.max(...Object.values(summary.hourly_distribution), 1)
+  // Get hourly values - convert string keys to ensure proper access
+  const hourlyValues = summary 
+    ? Object.values(summary.hourly_distribution).map(v => Number(v) || 0)
+    : [];
+  const maxHourly = hourlyValues.length > 0 
+    ? Math.max(...hourlyValues, 1) 
     : 1;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-zinc-950 text-white">
       {/* Header */}
-      <header className="bg-gray-800 border-b border-gray-700 p-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <header className="sticky top-0 z-50 bg-zinc-900/95 backdrop-blur border-b border-zinc-800">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
               href="/"
-              className="text-gray-400 hover:text-white transition-colors"
+              className="text-zinc-400 hover:text-white transition-colors"
             >
               ← Back to Map
             </Link>
-            <h1 className="text-2xl font-bold">📊 City Analytics</h1>
+            <h1 className="text-xl font-bold tracking-tight">📊 City Analytics</h1>
           </div>
-          <div className="text-sm text-gray-400">
+          <div className="text-sm text-zinc-400">
             Last updated: {new Date().toLocaleTimeString()}
           </div>
         </div>
@@ -229,82 +247,89 @@ export default function AnalyticsPage() {
         {/* Key Stats */}
         {summary && (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
               <div className="text-3xl font-bold text-blue-400">
                 {summary.total_events.toLocaleString()}
               </div>
-              <div className="text-sm text-gray-400">Total Events</div>
+              <div className="text-sm text-zinc-500 mt-1 uppercase tracking-wide">Total Events</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
               <div className="text-3xl font-bold text-green-400">
                 {summary.events_24h}
               </div>
-              <div className="text-sm text-gray-400">Last 24h</div>
+              <div className="text-sm text-zinc-500 mt-1 uppercase tracking-wide">Last 24h</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
               <div className="text-3xl font-bold text-purple-400">
                 {summary.events_7d}
               </div>
-              <div className="text-sm text-gray-400">Last 7 Days</div>
+              <div className="text-sm text-zinc-500 mt-1 uppercase tracking-wide">Last 7 Days</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
               <div className="text-3xl font-bold text-yellow-400">
                 {summary.total_cities}
               </div>
-              <div className="text-sm text-gray-400">Cities</div>
+              <div className="text-sm text-zinc-500 mt-1 uppercase tracking-wide">Cities</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="text-xl font-bold text-orange-400">
+            <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
+              <div className="text-xl font-bold text-orange-400 truncate" title={summary.most_active_city || 'N/A'}>
                 {summary.most_active_city || 'N/A'}
               </div>
-              <div className="text-sm text-gray-400">Most Active</div>
+              <div className="text-sm text-zinc-500 mt-1 uppercase tracking-wide">Most Active</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
               <div className="text-xl font-bold text-red-400">
                 {summary.most_active_hour !== null
                   ? formatHour(summary.most_active_hour)
                   : 'N/A'}
               </div>
-              <div className="text-sm text-gray-400">Peak Hour</div>
+              <div className="text-sm text-zinc-500 mt-1 uppercase tracking-wide">Peak Hour</div>
             </div>
           </div>
         )}
 
         {/* Hourly Distribution */}
         {summary && (
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">
-              📅 24-Hour Activity Pattern
+          <div className="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+            <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
+              <span className="text-xl">📅</span> 24-Hour Activity Pattern
             </h2>
-            <div className="flex items-end gap-1 h-32">
+            <div className="flex items-end gap-1 h-32 mb-6">
               {Array.from({ length: 24 }, (_, hour) => {
-                const count = summary.hourly_distribution[hour] || 0;
-                const height =
+                // Access with string key since JSON keys are strings
+                const count = Number(summary.hourly_distribution[String(hour)]) || 0;
+                const heightPercent =
                   maxHourly > 0 ? (count / maxHourly) * 100 : 0;
+                // Calculate actual pixel height based on container (128px = h-32)
+                const barHeight = Math.max((heightPercent / 100) * 128, 4);
                 const isNow = new Date().getHours() === hour;
 
                 return (
                   <div
                     key={hour}
-                    className="flex-1 flex flex-col items-center"
+                    className="flex-1 flex flex-col justify-end items-center group relative h-full"
                   >
                     <div
                       className={`w-full rounded-t transition-all ${
                         isNow
                           ? 'bg-blue-500'
-                          : height > 75
+                          : heightPercent > 75
                             ? 'bg-red-500'
-                            : height > 50
+                            : heightPercent > 50
                               ? 'bg-orange-500'
-                              : height > 25
+                              : heightPercent > 25
                                 ? 'bg-yellow-500'
-                                : 'bg-gray-600'
+                                : 'bg-zinc-700'
                       }`}
-                      style={{ height: `${Math.max(height, 4)}%` }}
-                      title={`${formatHour(hour)}: ${count} events`}
+                      style={{ height: `${barHeight}px` }}
                     />
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full mb-2 bg-zinc-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 border border-zinc-700 pointer-events-none">
+                      {formatHour(hour)}: {count} events
+                    </div>
+                    
                     {hour % 3 === 0 && (
-                      <span className="text-xs text-gray-500 mt-1">
+                      <span className="text-[10px] text-zinc-500 mt-2 absolute -bottom-5 font-mono">
                         {formatHour(hour)}
                       </span>
                     )}
@@ -312,7 +337,7 @@ export default function AnalyticsPage() {
                 );
               })}
             </div>
-            <div className="mt-2 text-xs text-gray-500 text-center">
+            <div className="mt-4 text-xs text-zinc-500 text-center font-mono">
               Local time distribution (Iran Standard Time)
             </div>
           </div>
@@ -320,17 +345,19 @@ export default function AnalyticsPage() {
 
         {/* Event Type Distribution */}
         {summary && (
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">📊 Event Types</h2>
+          <div className="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+            <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
+              <span className="text-xl">📊</span> Event Types
+            </h2>
             <div className="flex flex-wrap gap-4">
               {Object.entries(summary.event_type_distribution).map(
                 ([type, count]) => (
-                  <div key={type} className="flex items-center gap-2">
+                  <div key={type} className="flex items-center gap-2 bg-zinc-800/50 px-3 py-2 rounded-lg border border-zinc-700">
                     <div
-                      className={`w-3 h-3 rounded ${EVENT_TYPE_COLORS[type] || 'bg-gray-500'}`}
+                      className={`w-3 h-3 rounded-full ${EVENT_TYPE_COLORS[type] || 'bg-zinc-500'}`}
                     />
-                    <span className="capitalize">{type.replace('_', ' ')}</span>
-                    <span className="text-gray-400">({count})</span>
+                    <span className="capitalize font-medium text-zinc-200">{type.replace('_', ' ')}</span>
+                    <span className="text-zinc-400 font-mono">({count})</span>
                   </div>
                 )
               )}
@@ -339,79 +366,81 @@ export default function AnalyticsPage() {
         )}
 
         {/* City Rankings */}
-        <div className="bg-gray-800 rounded-lg overflow-hidden">
-          <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-semibold">🏙️ City Rankings</h2>
+        <div className="bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800">
+          <div className="p-4 border-b border-zinc-800 bg-zinc-900/50">
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              <span className="text-xl">🏙️</span> City Rankings
+            </h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-700/50 text-sm text-gray-400">
+              <thead className="bg-zinc-800/50 text-xs font-bold text-zinc-400 uppercase tracking-wider">
                 <tr>
-                  <th className="p-3 text-left">#</th>
-                  <th className="p-3 text-left">City</th>
-                  <th className="p-3 text-center">24h</th>
-                  <th className="p-3 text-center">7d</th>
-                  <th className="p-3 text-center">Total</th>
-                  <th className="p-3 text-center">Trend</th>
-                  <th className="p-3 text-center">Activity</th>
-                  <th className="p-3 text-center">Peak</th>
-                  <th className="p-3 text-left">Hourly Pattern</th>
+                  <th className="p-4 text-left">#</th>
+                  <th className="p-4 text-left">City</th>
+                  <th className="p-4 text-center">24h</th>
+                  <th className="p-4 text-center">7d</th>
+                  <th className="p-4 text-center">Total</th>
+                  <th className="p-4 text-center">Trend</th>
+                  <th className="p-4 text-center">Activity</th>
+                  <th className="p-4 text-center">Peak</th>
+                  <th className="p-4 text-left">Hourly Pattern</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-zinc-800">
                 {cities.map((city) => (
                   <tr
                     key={city.city_name}
-                    className="border-b border-gray-700/50 hover:bg-gray-700/30 cursor-pointer"
+                    className="hover:bg-zinc-800/30 cursor-pointer transition-colors"
                     onClick={() => setSelectedCity(city)}
                   >
-                    <td className="p-3 text-gray-500">{city.rank}</td>
-                    <td className="p-3">
-                      <div className="font-medium">{city.city_name}</div>
-                      <div className="text-sm text-gray-500">
+                    <td className="p-4 text-zinc-500 font-mono">{city.rank}</td>
+                    <td className="p-4">
+                      <div className="font-bold text-white">{city.city_name}</div>
+                      <div className="text-xs text-zinc-500 mt-0.5">
                         {city.city_name_fa} • {city.province}
                       </div>
                     </td>
-                    <td className="p-3 text-center">
+                    <td className="p-4 text-center">
                       <span
-                        className={
+                        className={`font-mono font-bold ${
                           city.events_24h > 5
-                            ? 'text-red-400 font-bold'
+                            ? 'text-red-400'
                             : city.events_24h > 0
                               ? 'text-yellow-400'
-                              : 'text-gray-500'
-                        }
+                              : 'text-zinc-500'
+                        }`}
                       >
                         {city.events_24h}
                       </span>
                     </td>
-                    <td className="p-3 text-center text-blue-400">
+                    <td className="p-4 text-center text-blue-400 font-mono">
                       {city.events_7d}
                     </td>
-                    <td className="p-3 text-center">{city.total_events}</td>
-                    <td className="p-3 text-center">
-                      <span title={`${city.trend_percentage.toFixed(1)}%`}>
+                    <td className="p-4 text-center text-zinc-300 font-mono">{city.total_events}</td>
+                    <td className="p-4 text-center">
+                      <span title={`${city.trend_percentage.toFixed(1)}%`} className="text-lg">
                         {TREND_ICONS[city.trend_direction] || '➡️'}
                       </span>
                     </td>
-                    <td className="p-3 text-center">
+                    <td className="p-4 text-center">
                       <span
-                        className={`px-2 py-1 rounded text-xs ${ACTIVITY_COLORS[city.activity_level]} text-white`}
+                        className={`px-2 py-1 rounded text-xs font-bold uppercase ${ACTIVITY_COLORS[city.activity_level]} text-white`}
                       >
                         {city.activity_level}
                       </span>
                     </td>
-                    <td className="p-3 text-center text-sm text-gray-400">
+                    <td className="p-4 text-center text-xs text-zinc-400 font-mono">
                       {city.peak_hour !== null
                         ? formatHour(city.peak_hour)
                         : '-'}
                     </td>
-                    <td className="p-3">
+                    <td className="p-4">
                       {city.hourly_pattern && (
                         <HourlyHeatmap
                           data={city.hourly_pattern}
                           maxValue={Math.max(
-                            ...Object.values(city.hourly_pattern),
+                            ...Object.values(city.hourly_pattern).map(v => Number(v) || 0),
                             1
                           )}
                         />
@@ -426,15 +455,18 @@ export default function AnalyticsPage() {
 
         {/* City Detail Modal */}
         {selectedCity && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-gray-800 rounded-lg p-6 max-w-lg w-full mx-4 shadow-2xl">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold">
-                  {selectedCity.city_name} ({selectedCity.city_name_fa})
-                </h3>
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-2xl font-bold text-white">
+                    {selectedCity.city_name}
+                  </h3>
+                  <p className="text-zinc-400 text-sm mt-1">{selectedCity.city_name_fa}</p>
+                </div>
                 <button
                   onClick={() => setSelectedCity(null)}
-                  className="text-gray-400 hover:text-white"
+                  className="p-2 text-zinc-400 hover:text-white bg-zinc-800 rounded-lg hover:bg-zinc-700 transition-colors"
                 >
                   ✕
                 </button>
@@ -442,78 +474,86 @@ export default function AnalyticsPage() {
 
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-700/50 rounded p-3">
-                    <div className="text-2xl font-bold text-blue-400">
+                  <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+                    <div className="text-2xl font-bold text-blue-400 font-mono">
                       {selectedCity.events_24h}
                     </div>
-                    <div className="text-sm text-gray-400">Last 24 hours</div>
+                    <div className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Last 24 hours</div>
                   </div>
-                  <div className="bg-gray-700/50 rounded p-3">
-                    <div className="text-2xl font-bold text-purple-400">
+                  <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+                    <div className="text-2xl font-bold text-purple-400 font-mono">
                       {selectedCity.events_7d}
                     </div>
-                    <div className="text-sm text-gray-400">Last 7 days</div>
+                    <div className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Last 7 days</div>
                   </div>
                 </div>
 
-                <div className="bg-gray-700/50 rounded p-3">
-                  <div className="text-sm text-gray-400 mb-2">
+                <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-3">
                     Event Breakdown
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      ✊ Protests: <strong>{selectedCity.protest_count}</strong>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-zinc-300">✊ Protests</span>
+                      <strong className="font-mono text-white">{selectedCity.protest_count}</strong>
                     </div>
-                    <div>
-                      ⚔️ Clashes: <strong>{selectedCity.clash_count}</strong>
+                    <div className="flex justify-between items-center">
+                      <span className="text-zinc-300">⚔️ Clashes</span>
+                      <strong className="font-mono text-white">{selectedCity.clash_count}</strong>
                     </div>
-                    <div>
-                      🚔 Arrests: <strong>{selectedCity.arrest_count}</strong>
+                    <div className="flex justify-between items-center">
+                      <span className="text-zinc-300">🚔 Arrests</span>
+                      <strong className="font-mono text-white">{selectedCity.arrest_count}</strong>
                     </div>
-                    <div>
-                      🚨 Police: <strong>{selectedCity.police_count}</strong>
+                    <div className="flex justify-between items-center">
+                      <span className="text-zinc-300">🚨 Police</span>
+                      <strong className="font-mono text-white">{selectedCity.police_count}</strong>
                     </div>
-                    <div>
-                      🛑 Strikes: <strong>{selectedCity.strike_count}</strong>
+                    <div className="flex justify-between items-center">
+                      <span className="text-zinc-300">🛑 Strikes</span>
+                      <strong className="font-mono text-white">{selectedCity.strike_count}</strong>
                     </div>
-                    <div>
-                      📊 Total: <strong>{selectedCity.total_events}</strong>
+                    <div className="pt-2 mt-2 border-t border-zinc-700/50 flex justify-between items-center">
+                      <span className="font-bold text-zinc-200">Total</span>
+                      <strong className="font-mono text-white">{selectedCity.total_events}</strong>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-gray-700/50 rounded p-3">
-                  <div className="text-sm text-gray-400 mb-2">Trend</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">
+                <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-3">Trend</div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl bg-zinc-900 p-2 rounded-lg border border-zinc-700">
                       {TREND_ICONS[selectedCity.trend_direction]}
                     </span>
-                    <span
-                      className={
-                        selectedCity.trend_percentage > 0
-                          ? 'text-green-400'
-                          : selectedCity.trend_percentage < 0
-                            ? 'text-red-400'
-                            : 'text-gray-400'
-                      }
-                    >
-                      {selectedCity.trend_percentage > 0 ? '+' : ''}
-                      {selectedCity.trend_percentage.toFixed(1)}% vs previous
-                      week
-                    </span>
+                    <div>
+                      <div
+                        className={`text-lg font-bold ${
+                          selectedCity.trend_percentage > 0
+                            ? 'text-green-400'
+                            : selectedCity.trend_percentage < 0
+                              ? 'text-red-400'
+                              : 'text-zinc-400'
+                        }`}
+                      >
+                        {selectedCity.trend_percentage > 0 ? '+' : ''}
+                        {selectedCity.trend_percentage.toFixed(1)}%
+                      </div>
+                      <div className="text-xs text-zinc-500">vs previous week</div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-3 pt-2">
                   <Link
                     href={`/?lat=${selectedCity.latitude}&lon=${selectedCity.longitude}&zoom=12`}
-                    className="flex-1 px-4 py-2 bg-blue-600 rounded text-center hover:bg-blue-700"
+                    className="flex-1 px-4 py-3 bg-blue-600 rounded-xl text-center font-semibold hover:bg-blue-500 transition-colors flex items-center justify-center gap-2"
                   >
-                    📍 View on Map
+                    <span>📍</span> View on Map
                   </Link>
                   <button
                     onClick={() => setSelectedCity(null)}
-                    className="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500"
+                    className="px-6 py-3 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition-colors font-semibold border border-zinc-700"
                   >
                     Close
                   </button>

@@ -40,7 +40,7 @@ interface SummaryResponse {
   message?: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 // Risk level colors
 const getRiskColor = (assessment: string) => {
@@ -50,7 +50,7 @@ const getRiskColor = (assessment: string) => {
   if (text.includes("elevated")) return "text-amber-500 bg-amber-500/20 border-amber-500";
   if (text.includes("moderate")) return "text-yellow-500 bg-yellow-500/20 border-yellow-500";
   if (text.includes("low")) return "text-green-500 bg-green-500/20 border-green-500";
-  return "text-gray-400 bg-gray-500/20 border-gray-500";
+  return "text-zinc-400 bg-zinc-500/20 border-zinc-500";
 };
 
 const getActivityColor = (level: string) => {
@@ -58,7 +58,7 @@ const getActivityColor = (level: string) => {
     case "high": return "text-red-400 bg-red-500/20";
     case "medium": return "text-amber-400 bg-amber-500/20";
     case "low": return "text-green-400 bg-green-500/20";
-    default: return "text-gray-400 bg-gray-500/20";
+    default: return "text-zinc-400 bg-zinc-500/20";
   }
 };
 
@@ -72,7 +72,12 @@ export default function SummaryPage() {
 
   const fetchSummary = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/summary`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
+      const res = await fetch(`${API_URL}/api/summary`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
       const data: SummaryResponse = await res.json();
       
       if (data.status === "success" && data.summary) {
@@ -82,7 +87,11 @@ export default function SummaryPage() {
         setError("No events to summarize yet. Check back later.");
       }
     } catch (err) {
-      setError("Failed to fetch summary. Backend may be unavailable.");
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError("Request timed out. Summary service may be slow.");
+      } else {
+        setError("Failed to fetch summary. Backend may be unavailable.");
+      }
       console.error(err);
     } finally {
       setLoading(false);

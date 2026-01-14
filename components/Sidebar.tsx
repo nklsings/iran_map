@@ -12,8 +12,10 @@ import {
   Loader2,
   AlertTriangle,
   Siren,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
-import { ProtestEvent, Stats, EventType } from '../lib/types';
+import { ProtestEvent, Stats, EventType, PPUCorrelation, NearbyPPU, RESPONSE_PATTERN_CONFIG, formatTimeDelta } from '../lib/types';
 import { format } from 'date-fns';
 
 // Event type display configuration
@@ -216,6 +218,11 @@ export default function Sidebar({
   const [showTranslation, setShowTranslation] = useState(false);
   const [clusterEvents, setClusterEvents] = useState<ClusterEvent[]>([]);
   const [loadingCluster, setLoadingCluster] = useState(false);
+  
+  // PPU Correlation state
+  const [ppuCorrelation, setPpuCorrelation] = useState<PPUCorrelation | null>(null);
+  const [loadingPPU, setLoadingPPU] = useState(false);
+  const [showPPUDetails, setShowPPUDetails] = useState(false);
 
   // Use relative URLs in production (Cloud Run/Vercel), absolute in local dev
   const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
@@ -226,10 +233,17 @@ export default function Sidebar({
     setTranslatedDesc(null);
     setShowTranslation(false);
     setClusterEvents([]);
+    setPpuCorrelation(null);
+    setShowPPUDetails(false);
 
     // If this is a cluster, fetch the individual events
     if (event?.properties.is_cluster && event.properties.event_ids) {
       fetchClusterEvents(event.properties.event_ids);
+    }
+    
+    // Fetch PPU correlation for non-police events
+    if (event && !event.properties.is_cluster && event.properties.event_type !== 'police_presence') {
+      fetchPPUCorrelation(event.properties.id as number);
     }
   }, [event?.properties.id]);
 
@@ -262,6 +276,23 @@ export default function Sidebar({
       console.error('Failed to fetch cluster events:', error);
     } finally {
       setLoadingCluster(false);
+    }
+  };
+
+  const fetchPPUCorrelation = async (eventId: number) => {
+    setLoadingPPU(true);
+    try {
+      const response = await fetch(
+        `${API_URL}/api/events/${eventId}/nearby-ppu?hours=12&radius_km=2`
+      );
+      if (response.ok) {
+        const data: PPUCorrelation = await response.json();
+        setPpuCorrelation(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch PPU correlation:', error);
+    } finally {
+      setLoadingPPU(false);
     }
   };
 
@@ -715,6 +746,153 @@ export default function Sidebar({
         ) : (
           <div className="aspect-video bg-zinc-900/50 flex items-center justify-center mb-6 border border-zinc-800/50 rounded">
             <span className="text-zinc-600 text-sm">No media attached</span>
+          </div>
+        )}
+
+        {/* PPU Correlation Section - Show for non-police events */}
+        {!event.properties.is_cluster && event.properties.event_type !== 'police_presence' && (
+          <div className="mb-6">
+            {loadingPPU ? (
+              <div className="bg-blue-950/30 border border-blue-800/50 rounded-lg p-3 flex items-center gap-3">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                <span className="text-sm text-blue-300">Checking for nearby police presence...</span>
+              </div>
+            ) : ppuCorrelation && ppuCorrelation.nearby_ppu.total > 0 ? (
+              <div className="bg-blue-950/30 border border-blue-800/50 rounded-lg overflow-hidden">
+                {/* Header with summary */}
+                <button
+                  onClick={() => setShowPPUDetails(!showPPUDetails)}
+                  className="w-full p-3 flex items-center justify-between hover:bg-blue-900/20 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Siren className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm font-medium text-blue-300">
+                      {ppuCorrelation.nearby_ppu.total} Police Report{ppuCorrelation.nearby_ppu.total !== 1 ? 's' : ''} Nearby
+                    </span>
+                    {ppuCorrelation.nearby_ppu.verified_count > 0 && (
+                      <span className="bg-blue-600/30 text-blue-300 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                        {ppuCorrelation.nearby_ppu.verified_count} verified
+                      </span>
+                    )}
+                  </div>
+                  {showPPUDetails ? (
+                    <ChevronUp className="w-4 h-4 text-blue-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-blue-400" />
+                  )}
+                </button>
+
+                {/* Response pattern indicator */}
+                <div className="px-3 pb-3">
+                  {(() => {
+                    const pattern = ppuCorrelation.analysis.response_pattern;
+                    const config = RESPONSE_PATTERN_CONFIG[pattern];
+                    return (
+                      <div 
+                        className="flex items-center gap-2 px-2 py-1.5 rounded text-xs"
+                        style={{ backgroundColor: config.bgColor }}
+                      >
+                        <span>{config.icon}</span>
+                        <span style={{ color: config.color }} className="font-medium">
+                          {config.label}
+                        </span>
+                        <span className="text-gray-400">— {config.description}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Detailed breakdown */}
+                {showPPUDetails && (
+                  <div className="border-t border-blue-800/30 p-3 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                    {/* Before event */}
+                    {ppuCorrelation.nearby_ppu.before_event.length > 0 && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-orange-400 font-bold mb-1.5 flex items-center gap-1">
+                          <span>⚠️</span> Before Event ({ppuCorrelation.nearby_ppu.before_event.length})
+                        </div>
+                        <div className="space-y-1">
+                          {ppuCorrelation.nearby_ppu.before_event.map((ppu: NearbyPPU) => (
+                            <div key={ppu.id} className="bg-orange-950/20 border border-orange-800/30 rounded px-2 py-1.5 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-300 truncate max-w-[180px]">{ppu.title}</span>
+                                <span className="text-orange-400 font-mono">
+                                  -{formatTimeDelta(Math.abs(ppu.time_delta_minutes))}
+                                </span>
+                              </div>
+                              {ppu.verified && (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-white/70 mt-1">
+                                  <Shield className="w-3 h-3" /> Verified
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* During event */}
+                    {ppuCorrelation.nearby_ppu.during_event.length > 0 && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-yellow-400 font-bold mb-1.5 flex items-center gap-1">
+                          <span>⚡</span> During Event ({ppuCorrelation.nearby_ppu.during_event.length})
+                        </div>
+                        <div className="space-y-1">
+                          {ppuCorrelation.nearby_ppu.during_event.map((ppu: NearbyPPU) => (
+                            <div key={ppu.id} className="bg-yellow-950/20 border border-yellow-800/30 rounded px-2 py-1.5 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-300 truncate max-w-[180px]">{ppu.title}</span>
+                                <span className="text-yellow-400 font-mono">concurrent</span>
+                              </div>
+                              {ppu.verified && (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-white/70 mt-1">
+                                  <Shield className="w-3 h-3" /> Verified
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* After event */}
+                    {ppuCorrelation.nearby_ppu.after_event.length > 0 && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5 flex items-center gap-1">
+                          <span>🚔</span> After Event ({ppuCorrelation.nearby_ppu.after_event.length})
+                        </div>
+                        <div className="space-y-1">
+                          {ppuCorrelation.nearby_ppu.after_event.map((ppu: NearbyPPU) => (
+                            <div key={ppu.id} className="bg-blue-950/20 border border-blue-800/30 rounded px-2 py-1.5 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-300 truncate max-w-[180px]">{ppu.title}</span>
+                                <span className="text-blue-400 font-mono">
+                                  +{formatTimeDelta(ppu.time_delta_minutes)}
+                                </span>
+                              </div>
+                              {ppu.verified && (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-white/70 mt-1">
+                                  <Shield className="w-3 h-3" /> Verified
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="text-[10px] text-gray-500 pt-2 border-t border-blue-800/30">
+                      📍 Within {ppuCorrelation.search_radius_km}km • ⏱️ {ppuCorrelation.hours_window}h window
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : ppuCorrelation ? (
+              <div className="bg-green-950/20 border border-green-800/30 rounded-lg p-3 flex items-center gap-2">
+                <span className="text-green-400">✓</span>
+                <span className="text-sm text-green-300">No police presence reported nearby</span>
+              </div>
+            ) : null}
           </div>
         )}
 

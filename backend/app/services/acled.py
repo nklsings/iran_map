@@ -4,7 +4,8 @@ ACLED (Armed Conflict Location & Event Data) Integration
 ACLED is an academic project that collects and codes information on political violence
 and protest events worldwide. This service fetches data specific to Iran.
 
-API Documentation: https://acleddata.com/resources/quick-guide-to-acled-data/
+API Documentation: https://acleddata.com/api-documentation/getting-started
+Note: ACLED now uses OAuth token-based authentication (as of 2024)
 """
 
 import os
@@ -48,24 +49,63 @@ class ACLEDService:
     """
     Service to fetch and process ACLED conflict data for Iran.
     
-    Requires ACLED_API_KEY and ACLED_EMAIL environment variables.
+    Requires ACLED_EMAIL and ACLED_PASSWORD environment variables.
     Register for free at: https://acleddata.com/register/
+    
+    Uses OAuth token-based authentication per:
+    https://acleddata.com/api-documentation/getting-started
     """
     
-    BASE_URL = "https://api.acleddata.com/acled/read"
+    TOKEN_URL = "https://acleddata.com/oauth/token"
+    API_URL = "https://acleddata.com/api/acled/read"
     COUNTRY = "Iran"
     
     def __init__(self, db: Session):
         self.db = db
-        self.api_key = os.getenv("ACLED_API_KEY")
         self.email = os.getenv("ACLED_EMAIL")
+        self.password = os.getenv("ACLED_PASSWORD")
+        self._access_token = None
         
-        if not self.api_key or not self.email:
-            print("⚠ ACLED credentials not set (ACLED_API_KEY, ACLED_EMAIL)")
+        if not self.email or not self.password:
+            print("⚠ ACLED credentials not set (ACLED_EMAIL, ACLED_PASSWORD)")
     
     def _is_configured(self) -> bool:
         """Check if ACLED API is configured"""
-        return bool(self.api_key and self.email)
+        return bool(self.email and self.password)
+    
+    def _get_access_token(self) -> Optional[str]:
+        """
+        Get OAuth access token from ACLED.
+        Token is valid for 24 hours.
+        """
+        if self._access_token:
+            return self._access_token
+            
+        try:
+            response = requests.post(
+                self.TOKEN_URL,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data={
+                    "username": self.email,
+                    "password": self.password,
+                    "grant_type": "password",
+                    "client_id": "acled"
+                },
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                self._access_token = token_data.get("access_token")
+                print(f"  ACLED: OAuth token obtained (expires in {token_data.get('expires_in', 86400)}s)")
+                return self._access_token
+            else:
+                print(f"  ACLED: OAuth failed - HTTP {response.status_code}")
+                return None
+                
+        except Exception as e:
+            print(f"  ACLED: OAuth error - {e}")
+            return None
     
     def fetch_recent_events(self, days: int = 30) -> List[Dict]:
         """
@@ -81,33 +121,64 @@ class ACLEDService:
             print("  ACLED: API not configured, using sample data")
             return self._get_sample_data()
         
+        # Get OAuth token
+        token = self._get_access_token()
+        if not token:
+            print("  ACLED: Could not get access token, using sample data")
+            return self._get_sample_data()
+        
         try:
-            # Calculate date range
-            end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            start_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+            # Calculate date range - use year for simpler query
+            current_year = datetime.now(timezone.utc).year
             
-            params = {
-                "key": self.api_key,
-                "email": self.email,
-                "country": self.COUNTRY,
-                "event_date": f"{start_date}|{end_date}",
-                "event_date_where": "BETWEEN",
-                "limit": 500,  # Max events to fetch
+            # Build API request with OAuth Bearer token
+            # Per docs: https://acleddata.com/api-documentation/getting-started
+            headers = {
+                "Authorization": f"Bearer {token}",
             }
             
-            response = requests.get(self.BASE_URL, params=params, timeout=30)
+            # Use simpler parameter format per ACLED docs
+            # Note: ACLED uses "Iran" as country name
+            params = {
+                "country": self.COUNTRY,
+                "year": current_year,
+                "limit": 500,
+            }
+            
+            # Construct URL with _format in path
+            url = f"{self.API_URL}?_format=json"
+            
+            response = requests.get(
+                url,
+                headers=headers,
+                params=params,
+                timeout=30
+            )
             
             if response.status_code == 200:
                 data = response.json()
-                if data.get("success"):
+                if data.get("status") == 200:
                     events = data.get("data", [])
-                    print(f"  ACLED: Fetched {len(events)} events")
+                    print(f"  ACLED: Fetched {len(events)} events for {self.COUNTRY} in {current_year}")
                     return events
                 else:
-                    print(f"  ACLED: API error - {data.get('error', 'Unknown')}")
+                    print(f"  ACLED: API error - {data.get('message', 'Unknown')}")
                     return []
+            elif response.status_code == 401:
+                print("  ACLED: Token expired or invalid")
+                self._access_token = None
+                return []
+            elif response.status_code == 403:
+                # Try to get more info about the 403
+                print(f"  ACLED: HTTP 403 Forbidden - checking response...")
+                try:
+                    error_data = response.json()
+                    print(f"  ACLED: Error details - {error_data}")
+                except:
+                    print(f"  ACLED: Response body - {response.text[:500]}")
+                return []
             else:
-                print(f"  ACLED: HTTP {response.status_code}")
+                print(f"  ACLED: HTTP {response.status_code} - {response.text[:200]}")
                 return []
                 
         except Exception as e:
@@ -149,7 +220,7 @@ class ACLEDService:
                 "location": "Isfahan",
                 "latitude": "32.6546",
                 "longitude": "51.6680",
-                "notes": "[SAMPLE] Protest with security response in Isfahan. Configure ACLED_API_KEY for real data.",
+                "notes": "[SAMPLE] Protest with security response in Isfahan. Configure ACLED_EMAIL & ACLED_PASSWORD for real data.",
                 "fatalities": "0",
                 "source": "Sample Data",
             },

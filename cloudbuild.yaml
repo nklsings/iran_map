@@ -40,7 +40,7 @@ steps:
       - '--add-cloudsql-instances'
       - '${_CLOUD_SQL_INSTANCE}'
       - '--set-env-vars'
-      - 'DATABASE_URL=${_DATABASE_URL},CRON_SECRET=${_CRON_SECRET},REPORT_MAX_AGE_HOURS=168,OPENAI_API_KEY=${_OPENAI_API_KEY},CHECKWX_API_KEY=${_CHECKWX_API_KEY}'
+      - 'DATABASE_URL=${_DATABASE_URL},CRON_SECRET=${_CRON_SECRET},ADMIN_KEY=${_ADMIN_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},OPENAI_MODEL=${_OPENAI_MODEL},TWITTER_BEARER_TOKEN=${_TWITTER_BEARER_TOKEN},CHECKWX_API_KEY=${_CHECKWX_API_KEY},ACLED_EMAIL=${_ACLED_EMAIL},ACLED_PASSWORD=${_ACLED_PASSWORD},CLOUDFLARE_RADAR_API_KEY=${_CLOUDFLARE_RADAR_API_KEY},ENABLE_AUTO_INGESTION=${_ENABLE_AUTO_INGESTION},RSS_INTERVAL_MINUTES=${_RSS_INTERVAL_MINUTES},TELEGRAM_INTERVAL_MINUTES=${_TELEGRAM_INTERVAL_MINUTES},TWITTER_INTERVAL_MINUTES=${_TWITTER_INTERVAL_MINUTES},YOUTUBE_INTERVAL_MINUTES=${_YOUTUBE_INTERVAL_MINUTES},REDDIT_INTERVAL_MINUTES=${_REDDIT_INTERVAL_MINUTES},OSINT_INTERVAL_MINUTES=${_OSINT_INTERVAL_MINUTES},SUMMARY_INTERVAL_MINUTES=${_SUMMARY_INTERVAL_MINUTES},REPORT_MAX_AGE_HOURS=${_REPORT_MAX_AGE_HOURS},CLEANUP_INTERVAL_MINUTES=${_CLEANUP_INTERVAL_MINUTES}'
       - '--memory'
       - '1Gi'
       - '--cpu'
@@ -54,11 +54,33 @@ steps:
 
 substitutions:
   _REGION: us-central1
-  _CLOUD_SQL_INSTANCE: ''  # Set via trigger: PROJECT_ID:REGION:INSTANCE_NAME
-  _DATABASE_URL: ''        # Set via trigger or Secret Manager
-  _CRON_SECRET: ''         # Set via trigger or Secret Manager
-  _OPENAI_API_KEY: ''      # Set via trigger or Secret Manager (for AI summaries)
-  _CHECKWX_API_KEY: ''     # Set via trigger or Secret Manager (for NOTAM data)
+  _CLOUD_SQL_INSTANCE: '' # Set via trigger: PROJECT_ID:REGION:INSTANCE_NAME
+
+  # === REQUIRED: Database & Security ===
+  _DATABASE_URL: '' # PostgreSQL connection string (Cloud SQL)
+  _CRON_SECRET: '' # Secret for triggering ingestion endpoints
+  _ADMIN_KEY: '' # Secret for admin endpoints (event creation, source management)
+
+  # === API Keys (set via trigger or Secret Manager) ===
+  _OPENAI_API_KEY: '' # OpenAI API key for AI summaries and NLP
+  _OPENAI_MODEL: 'gpt-4o-mini' # OpenAI model to use (default: gpt-4o-mini)
+  _TWITTER_BEARER_TOKEN: '' # Twitter/X API Bearer Token
+  _CHECKWX_API_KEY: '' # CheckWX API key for NOTAM/airspace data
+  _ACLED_EMAIL: '' # ACLED account email for conflict data
+  _ACLED_PASSWORD: '' # ACLED account password
+  _CLOUDFLARE_RADAR_API_KEY: '' # Cloudflare Radar API for connectivity monitoring
+
+  # === Ingestion Intervals (minutes) - Optional, have defaults ===
+  _ENABLE_AUTO_INGESTION: 'true'
+  _RSS_INTERVAL_MINUTES: '5'
+  _TELEGRAM_INTERVAL_MINUTES: '5'
+  _TWITTER_INTERVAL_MINUTES: '30'
+  _YOUTUBE_INTERVAL_MINUTES: '15'
+  _REDDIT_INTERVAL_MINUTES: '10'
+  _OSINT_INTERVAL_MINUTES: '10'
+  _SUMMARY_INTERVAL_MINUTES: '60'
+  _REPORT_MAX_AGE_HOURS: '168' # 7 days
+  _CLEANUP_INTERVAL_MINUTES: '30'
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -66,4 +88,3 @@ options:
 images:
   - 'gcr.io/$PROJECT_ID/iran-protest-map:$COMMIT_SHA'
   - 'gcr.io/$PROJECT_ID/iran-protest-map:latest'
-

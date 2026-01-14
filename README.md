@@ -40,6 +40,7 @@ Website (URL to be updated): https://iran-protest-heatmap.vercel.app/
 ## ✨ Features
 
 ### Core Map Features
+
 - **Live Heatmap Visualization** — Real-time heatmap of protest events using deck.gl with intensity-based coloring
 - **Event Clustering** — Smart clustering of nearby events for better performance and readability
 - **Verified vs Unverified Events** — Toggle between all reports and verified-only incidents
@@ -49,23 +50,27 @@ Website (URL to be updated): https://iran-protest-heatmap.vercel.app/
 - **Social Sharing** — Share individual reports via Web Share API or clipboard
 
 ### Intelligence & Analytics
+
 - **AI-Powered Situation Summaries** — Hourly GPT-4 generated intelligence reports with risk assessments
 - **City Analytics Dashboard** — Track event trends, hourly patterns, and activity levels by city
 - **Hotspot Detection** — Automatic identification of high-activity areas
 - **Trend Analysis** — Compare week-over-week activity changes
 
 ### OSINT Data Sources
+
 - **Multi-Source Aggregation** — RSS feeds, Telegram, YouTube, ACLED, GeoConfirmed, ArcGIS
 - **Real-time Telegram Feed** — Live feed with NLP analysis, urgency scoring, and sentiment detection
 - **ACLED Integration** — Armed Conflict Location & Event Data for verified conflict events
 - **GeoConfirmed Import** — Import geoverified events from GeoConfirmed.org
 
 ### Specialized Monitoring
+
 - **Airspace/NOTAM Tracking** — Monitor flight restrictions and airspace events
 - **Internet Connectivity** — Province-level internet availability tracking (IODA integration)
 - **PPU (Police Presence Unit)** — Crowdsourced police presence reporting with crowd-verification
 
 ### Admin Features
+
 - **Admin Panel** — Create and verify events manually
 - **Source Health Monitoring** — Track which data sources are working
 - **Scheduled Ingestion** — Automatic background data collection every 15 minutes
@@ -227,12 +232,12 @@ npm run dev
 
 ## 📄 Pages & Routes
 
-| Route | Description |
-|-------|-------------|
-| `/` | Main interactive map with heatmap visualization |
-| `/admin` | Admin panel for creating/verifying events (requires admin key) |
+| Route        | Description                                                         |
+| ------------ | ------------------------------------------------------------------- |
+| `/`          | Main interactive map with heatmap visualization                     |
+| `/admin`     | Admin panel for creating/verifying events (requires admin key)      |
 | `/analytics` | City analytics dashboard with rankings, trends, and hourly patterns |
-| `/summary` | AI-generated situation summaries with risk assessments |
+| `/summary`   | AI-generated situation summaries with risk assessments              |
 
 ---
 
@@ -246,13 +251,13 @@ GET /api/events?hours=24&verified_only=false&event_type=protest&cluster=true
 
 Returns protest events as GeoJSON FeatureCollection with clustering.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `hours` | int | 24 | Time window in hours |
-| `verified_only` | bool | false | Filter to verified events only |
-| `event_type` | str | null | Filter by type: protest, police_presence, strike, clash, arrest |
-| `cluster` | bool | true | Enable clustering of nearby events |
-| `cluster_radius` | float | 2.0 | Clustering radius in km |
+| Parameter        | Type  | Default | Description                                                     |
+| ---------------- | ----- | ------- | --------------------------------------------------------------- |
+| `hours`          | int   | 24      | Time window in hours                                            |
+| `verified_only`  | bool  | false   | Filter to verified events only                                  |
+| `event_type`     | str   | null    | Filter by type: protest, police_presence, strike, clash, arrest |
+| `cluster`        | bool  | true    | Enable clustering of nearby events                              |
+| `cluster_radius` | float | 2.0     | Clustering radius in km                                         |
 
 ### Stats
 
@@ -355,19 +360,19 @@ GET /health
 
 ## 📊 Data Sources
 
-| Source | Type | Status | Description |
-|--------|------|--------|-------------|
-| BBC Persian RSS | News | ✅ Working | High reliability |
-| DW Persian RSS | News | ✅ Working | High reliability |
-| VOA Persian RSS | News | ⚠️ Intermittent | Check feed URL |
-| Human Rights Watch | NGO | ✅ Working | Human rights focus |
-| Amnesty International | NGO | ✅ Working | Human rights focus |
-| ACLED | Conflict Data | ✅ Working | Requires API key |
-| GeoConfirmed | OSINT | ✅ Working | Geoverified events |
-| ArcGIS Feature Services | OSINT | ✅ Working | Military/infrastructure |
-| YouTube Persian | Social | ✅ Working | Live news channels |
-| Telegram Channels | Social | ⚠️ Partial | Rate limited |
-| Twitter/Nitter | Social | ❌ Unreliable | Nitter blocked |
+| Source                  | Type          | Status          | Description             |
+| ----------------------- | ------------- | --------------- | ----------------------- |
+| BBC Persian RSS         | News          | ✅ Working      | High reliability        |
+| DW Persian RSS          | News          | ✅ Working      | High reliability        |
+| VOA Persian RSS         | News          | ⚠️ Intermittent | Check feed URL          |
+| Human Rights Watch      | NGO           | ✅ Working      | Human rights focus      |
+| Amnesty International   | NGO           | ✅ Working      | Human rights focus      |
+| ACLED                   | Conflict Data | ✅ Working      | Requires API key        |
+| GeoConfirmed            | OSINT         | ✅ Working      | Geoverified events      |
+| ArcGIS Feature Services | OSINT         | ✅ Working      | Military/infrastructure |
+| YouTube Persian         | Social        | ✅ Working      | Live news channels      |
+| Telegram Channels       | Social        | ⚠️ Partial      | Rate limited            |
+| Twitter/Nitter          | Social        | ❌ Unreliable   | Nitter blocked          |
 
 ---
 
@@ -375,26 +380,32 @@ GET /health
 
 ### Frontend
 
-| Variable | Description | Default |
-|----------|-------------|---------|
+| Variable              | Description     | Default         |
+| --------------------- | --------------- | --------------- |
 | `NEXT_PUBLIC_API_URL` | Backend API URL | `""` (relative) |
 
 ### Backend
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `CRON_SECRET` | Secret key for ingestion endpoint | No |
-| `ADMIN_KEY` | Secret key for admin endpoints | No |
-| `OPENAI_API_KEY` | OpenAI API key for summaries | For AI features |
-| `ACLED_API_KEY` | ACLED API key | For ACLED data |
-| `ACLED_EMAIL` | ACLED registered email | For ACLED data |
-| `TELEGRAM_API_ID` | Telegram API credentials | For Telegram |
-| `TELEGRAM_API_HASH` | Telegram API credentials | For Telegram |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare Radar API | For connectivity |
-| `ENABLE_AUTO_INGESTION` | Enable scheduled ingestion | `true` |
-| `INGESTION_INTERVAL_MINUTES` | Ingestion frequency | `15` |
-| `REPORT_MAX_AGE_HOURS` | Auto-delete old reports | `168` (7 days) |
+| Variable                    | Description                       | Required         |
+| --------------------------- | --------------------------------- | ---------------- |
+| `DATABASE_URL`              | PostgreSQL connection string      | Yes              |
+| `CRON_SECRET`               | Secret key for ingestion endpoint | No               |
+| `ADMIN_KEY`                 | Secret key for admin endpoints    | No               |
+| `OPENAI_API_KEY`            | OpenAI API key for summaries      | For AI features  |
+| `ACLED_EMAIL`               | ACLED registered email            | For ACLED data   |
+| `ACLED_PASSWORD`            | ACLED account password            | For ACLED data   |
+| `TWITTER_BEARER_TOKEN`      | Twitter/X API v2 Bearer Token     | For Twitter feed |
+| `TELEGRAM_API_ID`           | Telegram API credentials          | For Telegram     |
+| `TELEGRAM_API_HASH`         | Telegram API credentials          | For Telegram     |
+| `CLOUDFLARE_API_TOKEN`      | Cloudflare Radar API              | For connectivity |
+| `ENABLE_AUTO_INGESTION`     | Enable scheduled ingestion        | `true`           |
+| `RSS_INTERVAL_MINUTES`      | RSS feed fetch interval           | `5`              |
+| `TELEGRAM_INTERVAL_MINUTES` | Telegram fetch interval           | `5`              |
+| `TWITTER_INTERVAL_MINUTES`  | Twitter API fetch interval        | `30`             |
+| `YOUTUBE_INTERVAL_MINUTES`  | YouTube fetch interval            | `15`             |
+| `REDDIT_INTERVAL_MINUTES`   | Reddit fetch interval             | `10`             |
+| `OSINT_INTERVAL_MINUTES`    | OSINT (ArcGIS) fetch interval     | `10`             |
+| `REPORT_MAX_AGE_HOURS`      | Auto-delete old reports           | `168` (7 days)   |
 
 ---
 
@@ -500,14 +511,14 @@ We welcome contributions from developers, designers, translators, and human righ
 
 ### Ways to Contribute
 
-| Type | Description |
-|------|-------------|
-| 🐛 **Bug Reports** | Found a bug? Open an issue with steps to reproduce |
-| ✨ **Feature Requests** | Have an idea? Open an issue to discuss it first |
-| 🔧 **Code Contributions** | Submit PRs for bug fixes or approved features |
-| 🌍 **Translations** | Help translate the UI or improve Persian geocoding |
-| 📊 **Data Sources** | Suggest reliable Telegram channels or news sources |
-| 📝 **Documentation** | Improve docs, fix typos, add examples |
+| Type                      | Description                                        |
+| ------------------------- | -------------------------------------------------- |
+| 🐛 **Bug Reports**        | Found a bug? Open an issue with steps to reproduce |
+| ✨ **Feature Requests**   | Have an idea? Open an issue to discuss it first    |
+| 🔧 **Code Contributions** | Submit PRs for bug fixes or approved features      |
+| 🌍 **Translations**       | Help translate the UI or improve Persian geocoding |
+| 📊 **Data Sources**       | Suggest reliable Telegram channels or news sources |
+| 📝 **Documentation**      | Improve docs, fix typos, add examples              |
 
 ### Development Workflow
 
@@ -710,17 +721,17 @@ See our full [TODO.md](TODO.md) for the complete roadmap. Key priorities:
 
 ### Coming Soon
 
-| Feature | Status | Priority |
-|---------|--------|----------|
-| Official X.com (Twitter) API | 🔴 Planned | High |
-| More Telegram channels | 🔴 Planned | High |
-| Date range filtering | 🟡 Planned | Medium |
-| City/region filtering | 🟡 Planned | Medium |
-| Event search | 🟡 Planned | Medium |
-| Export (CSV/JSON) | 🟡 Planned | Medium |
-| GitHub Actions CI/CD | 🟢 Planned | Nice to have |
-| PWA support | 🟢 Planned | Nice to have |
-| Real-time WebSocket updates | 🔵 Research | Future |
+| Feature                      | Status      | Priority     |
+| ---------------------------- | ----------- | ------------ |
+| Official X.com (Twitter) API | 🔴 Planned  | High         |
+| More Telegram channels       | 🔴 Planned  | High         |
+| Date range filtering         | 🟡 Planned  | Medium       |
+| City/region filtering        | 🟡 Planned  | Medium       |
+| Event search                 | 🟡 Planned  | Medium       |
+| Export (CSV/JSON)            | 🟡 Planned  | Medium       |
+| GitHub Actions CI/CD         | 🟢 Planned  | Nice to have |
+| PWA support                  | 🟢 Planned  | Nice to have |
+| Real-time WebSocket updates  | 🔵 Research | Future       |
 
 ### Recently Completed ✅
 

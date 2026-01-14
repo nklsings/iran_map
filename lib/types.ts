@@ -244,3 +244,95 @@ export const CONNECTIVITY_STATUS_CONFIG: Record<ConnectivityStatus, {
   },
 };
 
+
+// ============================================================================
+// PPU (Police Presence) CORRELATION TYPES
+// ============================================================================
+export type TemporalRelation = "before_event" | "concurrent" | "after_event";
+export type ResponsePattern = "preemptive" | "reactive" | "concurrent" | "none";
+
+export interface NearbyPPU {
+  id: number;
+  title: string;
+  timestamp: string | null;
+  intensity: number;
+  verified: boolean;
+  time_delta_minutes: number;
+  source_platform: string | null;
+}
+
+export interface PPUCorrelation {
+  event: {
+    id: number;
+    title: string;
+    event_type: EventType;
+    timestamp: string | null;
+    latitude: number;
+    longitude: number;
+    verified: boolean;
+  };
+  nearby_ppu: {
+    total: number;
+    verified_count: number;
+    before_event: NearbyPPU[];
+    during_event: NearbyPPU[];
+    after_event: NearbyPPU[];
+  };
+  analysis: {
+    police_response_detected: boolean;
+    earliest_ppu_minutes: number | null;
+    response_pattern: ResponsePattern;
+  };
+  search_radius_km: number;
+  hours_window: number;
+}
+
+// Helper to format time delta for display
+export function formatTimeDelta(minutes: number): string {
+  const absMinutes = Math.abs(minutes);
+  if (absMinutes < 60) {
+    return `${absMinutes}m`;
+  }
+  const hours = Math.floor(absMinutes / 60);
+  const mins = absMinutes % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+// Response pattern display configuration
+export const RESPONSE_PATTERN_CONFIG: Record<ResponsePattern, {
+  label: string;
+  color: string;
+  bgColor: string;
+  icon: string;
+  description: string;
+}> = {
+  preemptive: {
+    label: "Preemptive",
+    color: "#f97316",
+    bgColor: "rgba(249, 115, 22, 0.2)",
+    icon: "⚠️",
+    description: "Police arrived before the event"
+  },
+  reactive: {
+    label: "Reactive",
+    color: "#3b82f6",
+    bgColor: "rgba(59, 130, 246, 0.2)",
+    icon: "🚔",
+    description: "Police arrived after the event started"
+  },
+  concurrent: {
+    label: "Concurrent",
+    color: "#eab308",
+    bgColor: "rgba(234, 179, 8, 0.2)",
+    icon: "⚡",
+    description: "Police presence during the event"
+  },
+  none: {
+    label: "No Response",
+    color: "#22c55e",
+    bgColor: "rgba(34, 197, 94, 0.2)",
+    icon: "✓",
+    description: "No police presence detected nearby"
+  }
+};
+

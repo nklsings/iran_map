@@ -4,11 +4,15 @@ import feedparser
 import requests
 import random
 import re
+import os
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 from .. import models, schemas
 from sqlalchemy.orm import Session
 from geoalchemy2.elements import WKTElement
+
+# Twitter/X API Bearer Token from environment
+TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN", "")
 
 # Iranian cities with coordinates for geo-inference
 IRAN_CITIES: Dict[str, Tuple[float, float]] = {
@@ -646,18 +650,132 @@ class RSSSource(DataSource):
 
 
 class TwitterSource(DataSource):
-    """Fetch tweets via Nitter (public Twitter mirror)"""
+    """Fetch tweets via Twitter API v2 or Nitter fallback"""
     source_type = "twitter"
     
-    def __init__(self, accounts: List[str] = None, instances: List[str] = None):
+    # Default search queries for Iran-related content
+    SEARCH_QUERIES = [
+        "#Iran",
+        "#IranProtests", 
+        "#MahsaAmini",
+        "#WomanLifeFreedom",
+        "Iran protest",
+        "ایران اعتراض",
+    ]
+    
+    def __init__(self, accounts: List[str] = None, instances: List[str] = None, queries: List[str] = None):
         self.accounts = accounts or TWITTER_ACCOUNTS
         self.instances = instances or NITTER_INSTANCES
+        self.queries = queries or self.SEARCH_QUERIES
+        self.bearer_token = TWITTER_BEARER_TOKEN
+
+    def _fetch_from_api(self) -> List[schemas.ProtestEventCreate]:
+        """Fetch tweets using official Twitter API v2"""
+        events = []
+        
+        if not self.bearer_token:
+            return events
+        
+        headers = {
+            "Authorization": f"Bearer {self.bearer_token}",
+            "User-Agent": "IranProtestMap/1.0"
+        }
+        
+        for query in self.queries:
+            try:
+                # Twitter API v2 recent search endpoint
+                url = "https://api.twitter.com/2/tweets/search/recent"
+                
+                # Build proper query - simpler format for reliability
+                # Note: Complex queries require Academic Research access
+                search_query = f"{query} -is:retweet"
+                
+                params = {
+                    "query": search_query,
+                    "max_results": 10,  # Basic tier limit
+                    "tweet.fields": "created_at,text,author_id",
+                    "expansions": "author_id",
+                    "user.fields": "username"
+                }
+                
+                resp = requests.get(url, headers=headers, params=params, timeout=15)
+                
+                if resp.status_code == 401:
+                    print(f"  Twitter API auth failed - check TWITTER_BEARER_TOKEN")
+                    return events
+                elif resp.status_code == 429:
+                    print(f"  Twitter API rate limited")
+                    continue
+                elif resp.status_code == 400:
+                    # Log the actual error for debugging
+                    try:
+                        error_detail = resp.json()
+                        print(f"  Twitter API 400: {error_detail.get('detail', error_detail)}")
+                    except:
+                        print(f"  Twitter API 400: {resp.text[:200]}")
+                    continue
+                elif resp.status_code != 200:
+                    print(f"  Twitter API error: {resp.status_code}")
+                    continue
+                
+                data = resp.json()
+                tweets = data.get("data", [])
+                users = {u["id"]: u["username"] for u in data.get("includes", {}).get("users", [])}
+                
+                print(f"  Twitter API: {len(tweets)} tweets for '{query}'")
+                
+                for tweet in tweets:
+                    text = tweet.get("text", "")
+                    author_id = tweet.get("author_id", "")
+                    username = users.get(author_id, "unknown")
+                    tweet_id = tweet.get("id", "")
+                    
+                    # Check if protest-related
+                    if not self._is_protest_related(text) and 'iran' not in text.lower():
+                        continue
+                    
+                    location = self._extract_location(text)
+                    if not location:
+                        # Default to Tehran area for Iran tweets
+                        location = ("Iran (Twitter)", 
+                                   35.6892 + random.uniform(-0.2, 0.2), 
+                                   51.3890 + random.uniform(-0.2, 0.2),
+                                   False)
+                    
+                    city_name, lat, lon, is_diaspora = location
+                    
+                    try:
+                        created_at = tweet.get("created_at", "")
+                        if created_at:
+                            timestamp = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                        else:
+                            timestamp = datetime.now(timezone.utc)
+                    except:
+                        timestamp = datetime.now(timezone.utc)
+                    
+                    intensity = self._calculate_intensity(text)
+                    source_url = f"https://twitter.com/{username}/status/{tweet_id}"
+                    
+                    events.append(schemas.ProtestEventCreate(
+                        title=f"[@{username}] {text[:100]}...",
+                        description=text[:500],
+                        latitude=lat + random.uniform(-0.02, 0.02),
+                        longitude=lon + random.uniform(-0.02, 0.02),
+                        intensity_score=intensity,
+                        verified=False,
+                        timestamp=timestamp,
+                        source_url=source_url
+                    ))
+                    
+            except Exception as e:
+                print(f"  Error fetching Twitter API query '{query}': {e}")
+                continue
+        
+        return events
 
     def _get_working_instance(self) -> Optional[str]:
         """Find a working Nitter instance by testing RSS feed"""
-        # Note: Nitter instances are frequently blocked by Twitter/X
-        # This is a best-effort approach
-        test_accounts = ["bbcpersian", "voaborsat"]  # Less likely to be blocked
+        test_accounts = ["bbcpersian", "voaborsat"]
         
         for instance in self.instances:
             for test_account in test_accounts:
@@ -667,7 +785,6 @@ class TwitterSource(DataSource):
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                         'Accept': 'application/rss+xml, application/xml'
                     })
-                    # Check for actual RSS content, not error pages
                     if (resp.status_code == 200 and 
                         len(resp.text) > 1000 and 
                         '<item>' in resp.text and
@@ -676,15 +793,15 @@ class TwitterSource(DataSource):
                         return instance
                 except:
                     continue
-        print("  Note: Nitter instances are blocked/rate-limited. Consider using Twitter API.")
         return None
 
-    def fetch_events(self) -> List[schemas.ProtestEventCreate]:
+    def _fetch_from_nitter(self) -> List[schemas.ProtestEventCreate]:
+        """Fallback: Fetch tweets via Nitter (public Twitter mirror)"""
         events = []
         instance = self._get_working_instance()
         
         if not instance:
-            print("No working Nitter instance found")
+            print("  No working Nitter instance found")
             return events
         
         for account in self.accounts:
@@ -697,7 +814,6 @@ class TwitterSource(DataSource):
                     content = entry.get('summary', '')
                     full_text = f"{title} {content}"
                     
-                    # For Twitter, be more lenient - just check for Iran mention
                     has_iran = 'iran' in full_text.lower() or 'ایران' in full_text
                     has_protest = self._is_protest_related(full_text)
                     
@@ -706,7 +822,6 @@ class TwitterSource(DataSource):
                     
                     location = self._extract_location(full_text)
                     if not location:
-                        # Default to Tehran for Iran-related tweets without specific city
                         location = ("Iran (Twitter)", 
                                    35.6892 + random.uniform(-0.15, 0.15), 
                                    51.3890 + random.uniform(-0.15, 0.15),
@@ -725,7 +840,6 @@ class TwitterSource(DataSource):
                     intensity = self._calculate_intensity(full_text)
                     source_url = entry.get('link', '')
                     
-                    # Clean up Nitter URL to Twitter URL
                     if instance in source_url:
                         source_url = source_url.replace(f"https://{instance}", "https://twitter.com")
                     
@@ -735,16 +849,33 @@ class TwitterSource(DataSource):
                         latitude=lat + random.uniform(-0.02, 0.02),
                         longitude=lon + random.uniform(-0.02, 0.02),
                         intensity_score=intensity,
-                        verified=False,  # Social media is unverified by default
+                        verified=False,
                         timestamp=timestamp,
                         source_url=source_url
                     ))
                     
             except Exception as e:
-                print(f"Error fetching Twitter account @{account}: {e}")
+                print(f"  Error fetching Twitter account @{account}: {e}")
                 continue
         
         return events
+
+    def fetch_events(self) -> List[schemas.ProtestEventCreate]:
+        """Fetch tweets - uses API if token available, otherwise Nitter fallback"""
+        events = []
+        
+        # Try official Twitter API first if token is available
+        if self.bearer_token:
+            print("  Using Twitter API v2...")
+            events = self._fetch_from_api()
+            if events:
+                return events
+            print("  Twitter API returned no results, trying Nitter fallback...")
+        else:
+            print("  No TWITTER_BEARER_TOKEN set, using Nitter fallback...")
+        
+        # Fallback to Nitter
+        return self._fetch_from_nitter()
 
 
 class TelegramSource(DataSource):
@@ -1214,6 +1345,13 @@ class IngestionService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _get_active_sources(self, source_type: str) -> List[models.DataSource]:
+        """Fetch active sources from database"""
+        return self.db.query(models.DataSource).filter(
+            models.DataSource.source_type == source_type,
+            models.DataSource.is_active == True
+        ).all()
+
     def run_ingestion(self, source_type: str = "all"):
         """Run ingestion from all or specific sources
         
@@ -1225,7 +1363,21 @@ class IngestionService:
         # 1. RSS News Sources (most reliable)
         if source_type in ("all", "rss"):
             print("Fetching from RSS feeds...")
-            rss_source = RSSSource()
+            # Fetch from DB
+            db_sources = self._get_active_sources("rss")
+            if db_sources:
+                feeds = {
+                    s.identifier: {
+                        "url": s.url,
+                        "name": s.name,
+                        "reliability": s.reliability_score
+                    } for s in db_sources
+                }
+                rss_source = RSSSource(feeds=feeds)
+            else:
+                # Fallback to hardcoded
+                rss_source = RSSSource()
+                
             rss_events = rss_source.fetch_events()
             all_events.extend(rss_events)
             print(f"  -> {len(rss_events)} events from RSS")
@@ -1234,7 +1386,10 @@ class IngestionService:
         if source_type in ("all", "twitter"):
             print("Fetching from Twitter/Nitter...")
             try:
-                twitter_source = TwitterSource()
+                db_sources = self._get_active_sources("twitter")
+                accounts = [s.identifier for s in db_sources] if db_sources else None
+                
+                twitter_source = TwitterSource(accounts=accounts)
                 twitter_events = twitter_source.fetch_events()
                 all_events.extend(twitter_events)
                 print(f"  -> {len(twitter_events)} events from Twitter")
@@ -1245,7 +1400,10 @@ class IngestionService:
         if source_type in ("all", "telegram"):
             print("Fetching from Telegram...")
             try:
-                telegram_source = TelegramSource()
+                db_sources = self._get_active_sources("telegram")
+                channels = [s.identifier for s in db_sources] if db_sources else None
+                
+                telegram_source = TelegramSource(channels=channels)
                 telegram_events = telegram_source.fetch_events()
                 all_events.extend(telegram_events)
                 print(f"  -> {len(telegram_events)} events from Telegram")
@@ -1256,7 +1414,10 @@ class IngestionService:
         if source_type in ("all", "reddit"):
             print("Fetching from Reddit...")
             try:
-                reddit_source = RedditSource()
+                db_sources = self._get_active_sources("reddit")
+                subreddits = [s.identifier for s in db_sources] if db_sources else None
+                
+                reddit_source = RedditSource(subreddits=subreddits)
                 reddit_events = reddit_source.fetch_events()
                 all_events.extend(reddit_events)
                 print(f"  -> {len(reddit_events)} events from Reddit")
@@ -1267,7 +1428,10 @@ class IngestionService:
         if source_type in ("all", "instagram"):
             print("Fetching from Instagram...")
             try:
-                instagram_source = InstagramSource()
+                db_sources = self._get_active_sources("instagram")
+                accounts = [s.identifier for s in db_sources] if db_sources else None
+                
+                instagram_source = InstagramSource(accounts=accounts)
                 instagram_events = instagram_source.fetch_events()
                 all_events.extend(instagram_events)
                 print(f"  -> {len(instagram_events)} events from Instagram")
@@ -1278,7 +1442,19 @@ class IngestionService:
         if source_type in ("all", "youtube"):
             print("Fetching from YouTube...")
             try:
-                youtube_source = YouTubeSource()
+                db_sources = self._get_active_sources("youtube")
+                if db_sources:
+                    channels = {
+                        s.identifier: {
+                            "channel_id": s.url, # URL field stores channel ID for YouTube
+                            "name": s.name,
+                            "reliability": s.reliability_score
+                        } for s in db_sources
+                    }
+                    youtube_source = YouTubeSource(channels=channels)
+                else:
+                    youtube_source = YouTubeSource()
+                    
                 youtube_events = youtube_source.fetch_events()
                 all_events.extend(youtube_events)
                 print(f"  -> {len(youtube_events)} events from YouTube")

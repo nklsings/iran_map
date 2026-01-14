@@ -37,15 +37,15 @@ services:
       - ./backend:/app
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
+      # These override .env if set
       DATABASE_URL: postgresql://postgres:password@db:5432/iran_map
       CRON_SECRET: dev_secret
       PYTHONUNBUFFERED: "1"
       OPENAI_MODEL: "gpt-4o-mini" # Can be changed to gpt-4o for better quality
       SUMMARY_INTERVAL_MINUTES: "60" # Generate summary every hour
-      # ACLED API (register at https://acleddata.com/register/ for free academic access)
-      # ACLED_API_KEY: "your_acled_api_key"
-      # ACLED_EMAIL: "your_email@example.com"
     depends_on:
       db:
         condition: service_healthy

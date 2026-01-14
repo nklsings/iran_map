@@ -115,101 +115,128 @@ class CityAnalyticsService:
         city_data = ANALYTICS_CITIES[city_name]
         lat, lon = city_data["lat"], city_data["lon"]
         
-        # Define bounding box (roughly 30km radius)
-        delta = 0.3  # ~30km
-        min_lat, max_lat = lat - delta, lat + delta
-        min_lon, max_lon = lon - delta, lon + delta
-        
-        now = datetime.now(timezone.utc)
-        period_start = now - timedelta(days=days)
-        
-        # Query events in bounding box
-        events = self.db.query(models.ProtestEvent).filter(
-            and_(
-                models.ProtestEvent.latitude >= min_lat,
-                models.ProtestEvent.latitude <= max_lat,
-                models.ProtestEvent.longitude >= min_lon,
-                models.ProtestEvent.longitude <= max_lon,
-                models.ProtestEvent.timestamp >= period_start
-            )
-        ).all()
-        
-        # Compute statistics
-        total = len(events)
-        
-        # By event type
-        type_counts = defaultdict(int)
-        for e in events:
-            type_counts[e.event_type or "protest"] += 1
-        
-        # Last 24 hours
-        cutoff_24h = now - timedelta(hours=24)
-        events_24h = sum(1 for e in events if e.timestamp >= cutoff_24h)
-        
-        # Last 7 days
-        cutoff_7d = now - timedelta(days=7)
-        events_7d = sum(1 for e in events if e.timestamp >= cutoff_7d)
-        
-        # Hourly pattern
-        hourly = defaultdict(int)
-        for e in events:
-            if e.timestamp:
-                hour = e.timestamp.hour
-                hourly[hour] += 1
-        
-        # Find peak hour
-        peak_hour = max(hourly, key=hourly.get) if hourly else None
-        
-        # Trend calculation (compare last 7 days to previous 7 days)
-        cutoff_prev_7d = now - timedelta(days=14)
-        events_prev_7d = sum(1 for e in events 
-                           if e.timestamp >= cutoff_prev_7d and e.timestamp < cutoff_7d)
-        
-        if events_prev_7d > 0:
-            trend_pct = ((events_7d - events_prev_7d) / events_prev_7d) * 100
-        else:
-            trend_pct = 100 if events_7d > 0 else 0
-        
-        if trend_pct > 20:
-            trend_dir = "up"
-        elif trend_pct < -20:
-            trend_dir = "down"
-        else:
-            trend_dir = "stable"
-        
-        # Activity level
-        if events_24h >= 10:
-            activity = "critical"
-        elif events_24h >= 5:
-            activity = "high"
-        elif events_24h >= 2:
-            activity = "medium"
-        else:
-            activity = "low"
-        
-        return {
-            "city_name": city_name,
-            "city_name_fa": city_data["fa"],
-            "latitude": lat,
-            "longitude": lon,
-            "province": city_data["province"],
-            "total_events": total,
-            "protest_count": type_counts.get("protest", 0),
-            "clash_count": type_counts.get("clash", 0),
-            "arrest_count": type_counts.get("arrest", 0),
-            "police_count": type_counts.get("police_presence", 0),
-            "strike_count": type_counts.get("strike", 0),
-            "events_24h": events_24h,
-            "events_7d": events_7d,
-            "trend_direction": trend_dir,
-            "trend_percentage": round(trend_pct, 1),
-            "hourly_pattern": dict(hourly),
-            "peak_hour": peak_hour,
-            "avg_daily_events": round(total / days, 2) if days > 0 else 0,
-            "activity_level": activity,
-            "period_start": period_start,
-            "period_end": now,
-        }
+        try:
+            # Define bounding box (roughly 30km radius)
+            delta = 0.3  # ~30km
+            min_lat, max_lat = lat - delta, lat + delta
+            min_lon, max_lon = lon - delta, lon + delta
+            
+            now = datetime.now(timezone.utc)
+            period_start = now - timedelta(days=days)
+            
+            # Query events in bounding box
+            events = self.db.query(models.ProtestEvent).filter(
+                and_(
+                    models.ProtestEvent.latitude >= min_lat,
+                    models.ProtestEvent.latitude <= max_lat,
+                    models.ProtestEvent.longitude >= min_lon,
+                    models.ProtestEvent.longitude <= max_lon,
+                    models.ProtestEvent.timestamp >= period_start
+                )
+            ).all()
+            
+            # Compute statistics
+            total = len(events)
+            
+            # By event type
+            type_counts = defaultdict(int)
+            for e in events:
+                type_counts[e.event_type or "protest"] += 1
+            
+            # Last 24 hours
+            cutoff_24h = now - timedelta(hours=24)
+            events_24h = sum(1 for e in events if e.timestamp and e.timestamp >= cutoff_24h)
+            
+            # Last 7 days
+            cutoff_7d = now - timedelta(days=7)
+            events_7d = sum(1 for e in events if e.timestamp and e.timestamp >= cutoff_7d)
+            
+            # Hourly pattern
+            hourly = defaultdict(int)
+            for e in events:
+                if e.timestamp:
+                    hour = e.timestamp.hour
+                    hourly[hour] += 1
+            
+            # Find peak hour
+            peak_hour = max(hourly, key=hourly.get) if hourly else None
+            
+            # Trend calculation (compare last 7 days to previous 7 days)
+            cutoff_prev_7d = now - timedelta(days=14)
+            events_prev_7d = sum(1 for e in events 
+                               if e.timestamp and e.timestamp >= cutoff_prev_7d and e.timestamp < cutoff_7d)
+            
+            if events_prev_7d > 0:
+                trend_pct = ((events_7d - events_prev_7d) / events_prev_7d) * 100
+            else:
+                trend_pct = 100 if events_7d > 0 else 0
+            
+            if trend_pct > 20:
+                trend_dir = "up"
+            elif trend_pct < -20:
+                trend_dir = "down"
+            else:
+                trend_dir = "stable"
+            
+            # Activity level
+            if events_24h >= 10:
+                activity = "critical"
+            elif events_24h >= 5:
+                activity = "high"
+            elif events_24h >= 2:
+                activity = "medium"
+            else:
+                activity = "low"
+            
+            return {
+                "city_name": city_name,
+                "city_name_fa": city_data["fa"],
+                "latitude": lat,
+                "longitude": lon,
+                "province": city_data["province"],
+                "total_events": total,
+                "protest_count": type_counts.get("protest", 0),
+                "clash_count": type_counts.get("clash", 0),
+                "arrest_count": type_counts.get("arrest", 0),
+                "police_count": type_counts.get("police_presence", 0),
+                "strike_count": type_counts.get("strike", 0),
+                "events_24h": events_24h,
+                "events_7d": events_7d,
+                "trend_direction": trend_dir,
+                "trend_percentage": round(trend_pct, 1),
+                "hourly_pattern": dict(hourly),
+                "peak_hour": peak_hour,
+                "avg_daily_events": round(total / days, 2) if days > 0 else 0,
+                "activity_level": activity,
+                "period_start": period_start,
+                "period_end": now,
+            }
+        except Exception as e:
+            print(f"  CityAnalytics: Error computing stats for {city_name} - {e}")
+            now = datetime.now(timezone.utc)
+            return {
+                "city_name": city_name,
+                "city_name_fa": city_data["fa"],
+                "latitude": lat,
+                "longitude": lon,
+                "province": city_data["province"],
+                "total_events": 0,
+                "protest_count": 0,
+                "clash_count": 0,
+                "arrest_count": 0,
+                "police_count": 0,
+                "strike_count": 0,
+                "events_24h": 0,
+                "events_7d": 0,
+                "trend_direction": "stable",
+                "trend_percentage": 0.0,
+                "hourly_pattern": {},
+                "peak_hour": None,
+                "avg_daily_events": 0.0,
+                "activity_level": "low",
+                "period_start": now - timedelta(days=days),
+                "period_end": now,
+            }
     
     def compute_all_cities(self, days: int = 30) -> List[Dict]:
         """
@@ -254,20 +281,24 @@ class CityAnalyticsService:
         Returns:
             Dictionary mapping hour (0-23) to event count
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        
-        events = self.db.query(models.ProtestEvent).filter(
-            models.ProtestEvent.timestamp >= cutoff
-        ).all()
-        
-        hourly = defaultdict(int)
-        for e in events:
-            if e.timestamp:
-                hour = e.timestamp.hour
-                hourly[hour] += 1
-        
-        # Ensure all hours are present
-        return {h: hourly.get(h, 0) for h in range(24)}
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            
+            events = self.db.query(models.ProtestEvent).filter(
+                models.ProtestEvent.timestamp >= cutoff
+            ).all()
+            
+            hourly = defaultdict(int)
+            for e in events:
+                if e.timestamp:
+                    hour = e.timestamp.hour
+                    hourly[hour] += 1
+            
+            # Ensure all hours are present
+            return {h: hourly.get(h, 0) for h in range(24)}
+        except Exception as e:
+            print(f"  CityAnalytics: Error getting hourly distribution - {e}")
+            return {h: 0 for h in range(24)}
     
     def get_event_type_distribution(self, days: int = 30) -> Dict[str, int]:
         """
@@ -276,18 +307,22 @@ class CityAnalyticsService:
         Returns:
             Dictionary mapping event type to count
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        
-        events = self.db.query(models.ProtestEvent).filter(
-            models.ProtestEvent.timestamp >= cutoff
-        ).all()
-        
-        types = defaultdict(int)
-        for e in events:
-            event_type = e.event_type or "protest"
-            types[event_type] += 1
-        
-        return dict(types)
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            
+            events = self.db.query(models.ProtestEvent).filter(
+                models.ProtestEvent.timestamp >= cutoff
+            ).all()
+            
+            types = defaultdict(int)
+            for e in events:
+                event_type = e.event_type or "protest"
+                types[event_type] += 1
+            
+            return dict(types)
+        except Exception as e:
+            print(f"  CityAnalytics: Error getting event type distribution - {e}")
+            return {}
     
     def get_analytics_summary(self) -> Dict:
         """
@@ -296,43 +331,57 @@ class CityAnalyticsService:
         Returns:
             Summary dictionary with key metrics
         """
-        now = datetime.now(timezone.utc)
-        cutoff_24h = now - timedelta(hours=24)
-        cutoff_7d = now - timedelta(days=7)
-        
-        # Total events
-        total_events = self.db.query(models.ProtestEvent).count()
-        events_24h = self.db.query(models.ProtestEvent).filter(
-            models.ProtestEvent.timestamp >= cutoff_24h
-        ).count()
-        events_7d = self.db.query(models.ProtestEvent).filter(
-            models.ProtestEvent.timestamp >= cutoff_7d
-        ).count()
-        
-        # Get rankings
-        top_cities = self.get_city_ranking(limit=10)
-        
-        # Most active city
-        most_active = top_cities[0]["city_name"] if top_cities else None
-        
-        # Hourly distribution
-        hourly = self.get_hourly_distribution(days=7)
-        most_active_hour = max(hourly, key=hourly.get) if hourly else None
-        
-        # Event type distribution
-        type_dist = self.get_event_type_distribution(days=30)
-        
-        return {
-            "total_cities": len(ANALYTICS_CITIES),
-            "total_events": total_events,
-            "events_24h": events_24h,
-            "events_7d": events_7d,
-            "most_active_city": most_active,
-            "most_active_hour": most_active_hour,
-            "top_cities": top_cities,
-            "hourly_distribution": hourly,
-            "event_type_distribution": type_dist,
-        }
+        try:
+            now = datetime.now(timezone.utc)
+            cutoff_24h = now - timedelta(hours=24)
+            cutoff_7d = now - timedelta(days=7)
+            
+            # Total events
+            total_events = self.db.query(models.ProtestEvent).count()
+            events_24h = self.db.query(models.ProtestEvent).filter(
+                models.ProtestEvent.timestamp >= cutoff_24h
+            ).count()
+            events_7d = self.db.query(models.ProtestEvent).filter(
+                models.ProtestEvent.timestamp >= cutoff_7d
+            ).count()
+            
+            # Get rankings
+            top_cities = self.get_city_ranking(limit=10)
+            
+            # Most active city
+            most_active = top_cities[0]["city_name"] if top_cities else None
+            
+            # Hourly distribution
+            hourly = self.get_hourly_distribution(days=7)
+            most_active_hour = max(hourly, key=hourly.get) if hourly else None
+            
+            # Event type distribution
+            type_dist = self.get_event_type_distribution(days=30)
+            
+            return {
+                "total_cities": len(ANALYTICS_CITIES),
+                "total_events": total_events,
+                "events_24h": events_24h,
+                "events_7d": events_7d,
+                "most_active_city": most_active,
+                "most_active_hour": most_active_hour,
+                "top_cities": top_cities,
+                "hourly_distribution": hourly,
+                "event_type_distribution": type_dist,
+            }
+        except Exception as e:
+            print(f"  CityAnalytics: Error getting summary - {e}")
+            return {
+                "total_cities": len(ANALYTICS_CITIES),
+                "total_events": 0,
+                "events_24h": 0,
+                "events_7d": 0,
+                "most_active_city": None,
+                "most_active_hour": None,
+                "top_cities": [],
+                "hourly_distribution": {h: 0 for h in range(24)},
+                "event_type_distribution": {},
+            }
     
     def update_city_statistics(self) -> int:
         """

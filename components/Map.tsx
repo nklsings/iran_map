@@ -16,25 +16,25 @@ const INITIAL_VIEW_STATE = {
   bearing: 0
 };
 
-// Map style options
+// Map style options - Using free CARTO tiles (no API key required)
 export type MapStyleName = 'dark' | 'light' | 'satellite';
 
 export const MAP_STYLES: Record<MapStyleName, { url: string; label: string; icon: string }> = {
   dark: {
-    url: "https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json",
+    url: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
     label: "Dark",
     icon: "🌙"
   },
   light: {
-    url: "https://tiles.stadiamaps.com/styles/alidade_smooth.json",
+    url: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
     label: "Light",
     icon: "☀️"
   },
   satellite: {
-    // Using Stadia Alidade Satellite (hybrid with labels)
-    url: "https://tiles.stadiamaps.com/styles/alidade_satellite.json",
-    label: "Satellite",
-    icon: "🛰️"
+    // Voyager style as satellite alternative (true satellite requires paid API)
+    url: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+    label: "Voyager",
+    icon: "🗺️"
   },
 };
 

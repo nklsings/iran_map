@@ -5,12 +5,15 @@ import Map, { MapStyleName, MAP_STYLES } from '../components/Map';
 import Sidebar from '../components/Sidebar';
 import TelegramFeed from '../components/TelegramFeed';
 import { ProtestEvent, FeatureCollection, Stats, MEDIA_SOURCES, OSINT_SOURCES, OTHER_SOURCES, getEventSourceId, AirspaceEvent, AirspaceCollection, ProvinceConnectivity, ConnectivityCollection, CONNECTIVITY_STATUS_CONFIG } from '../lib/types';
-import { RefreshCw, Filter, ChevronDown, ChevronUp, Radio, BarChart3, Map as MapIcon, Menu, X, Layers, Shield, Globe, Loader2 } from 'lucide-react';
+import { RefreshCw, Filter, ChevronDown, ChevronUp, Radio, BarChart3, Map as MapIcon, Menu, X, Layers, Shield, Globe, Loader2, Plus, Send, CheckCircle } from 'lucide-react';
 
 type ViewMode = 'all' | 'verified' | 'ppu';
 
 // Auto-refresh interval in milliseconds (2 minutes)
 const AUTO_REFRESH_INTERVAL = 2 * 60 * 1000;
+
+// Service availability states
+type ServiceStatus = 'loading' | 'available' | 'unavailable';
 
 export default function Home() {
   const [events, setEvents] = useState<ProtestEvent[]>([]);
@@ -32,6 +35,50 @@ export default function Home() {
   const [mapStyle, setMapStyle] = useState<MapStyleName>('dark');
   const [showMapStylePicker, setShowMapStylePicker] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
+  // Suggest Source State
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [suggestStatus, setSuggestStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [suggestForm, setSuggestForm] = useState({
+    source_type: 'telegram',
+    identifier: '',
+    name: '',
+    url: '',
+    notes: ''
+  });
+
+  const handleSuggestSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSuggesting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/sources/suggest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(suggestForm)
+      });
+      if (res.ok) {
+        setSuggestStatus('success');
+        setTimeout(() => {
+          setShowSuggestModal(false);
+          setSuggestStatus('idle');
+          setSuggestForm({ source_type: 'telegram', identifier: '', name: '', url: '', notes: '' });
+        }, 2000);
+      } else {
+        setSuggestStatus('error');
+      }
+    } catch {
+      setSuggestStatus('error');
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+  
+  // Service availability states
+  const [feedStatus, setFeedStatus] = useState<ServiceStatus>('loading');
+  const [analyticsStatus, setAnalyticsStatus] = useState<ServiceStatus>('loading');
+  const [summaryStatus, setSummaryStatus] = useState<ServiceStatus>('loading');
+  
   const [enabledSources, setEnabledSources] = useState<Record<string, boolean>>(() => {
     // Initialize from source definitions
     const initial: Record<string, boolean> = {};
@@ -134,6 +181,60 @@ export default function Home() {
     fetchData();
   }, [fetchData]);
 
+  // Check service availability on mount
+  useEffect(() => {
+    const checkServices = async () => {
+      // Check Telegram Feed
+      try {
+        const feedRes = await fetch(`${API_URL}/api/telegram/feed?limit=1&hours=1`, { 
+          signal: AbortSignal.timeout(5000) 
+        });
+        if (feedRes.ok) {
+          const data = await feedRes.json();
+          // Consider available if we got a valid response (even with empty data)
+          setFeedStatus(data.status === 'success' ? 'available' : 'unavailable');
+        } else {
+          setFeedStatus('unavailable');
+        }
+      } catch {
+        setFeedStatus('unavailable');
+      }
+
+      // Check Analytics
+      try {
+        const analyticsRes = await fetch(`${API_URL}/api/analytics/summary`, { 
+          signal: AbortSignal.timeout(5000) 
+        });
+        if (analyticsRes.ok) {
+          const data = await analyticsRes.json();
+          setAnalyticsStatus(data.status === 'success' ? 'available' : 'unavailable');
+        } else {
+          setAnalyticsStatus('unavailable');
+        }
+      } catch {
+        setAnalyticsStatus('unavailable');
+      }
+
+      // Check Summary
+      try {
+        const summaryRes = await fetch(`${API_URL}/api/summary`, { 
+          signal: AbortSignal.timeout(5000) 
+        });
+        if (summaryRes.ok) {
+          const data = await summaryRes.json();
+          // Summary is available even with no_data status
+          setSummaryStatus(data.status === 'success' || data.status === 'no_data' ? 'available' : 'unavailable');
+        } else {
+          setSummaryStatus('unavailable');
+        }
+      } catch {
+        setSummaryStatus('unavailable');
+      }
+    };
+
+    checkServices();
+  }, [API_URL]);
+
   // Auto-refresh interval
   useEffect(() => {
     if (!autoRefreshEnabled) return;
@@ -196,6 +297,17 @@ export default function Home() {
             </label>
           ))}
         </div>
+      </div>
+
+      {/* Suggest Button */}
+      <div className="pt-2 mt-2 border-t border-zinc-800">
+        <button 
+          onClick={() => setShowSuggestModal(true)}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-medium transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Suggest a Source
+        </button>
       </div>
     </div>
   );
@@ -302,30 +414,57 @@ export default function Home() {
         
         {/* Right Controls Group */}
         <div className="pointer-events-auto flex items-center gap-2">
-          {/* Feed Toggle */}
-          <button
-            onClick={() => setShowTelegramFeed(!showTelegramFeed)}
-            className={`flex items-center gap-2 bg-zinc-900/90 backdrop-blur border px-3 py-2 rounded-lg text-xs font-medium transition-all shadow-lg ${
-              showTelegramFeed ? 'border-blue-600 text-blue-400 bg-blue-900/20' : 'border-zinc-700 text-white hover:bg-zinc-800'
-            }`}
-          >
-            <Radio className={`w-3.5 h-3.5 ${showTelegramFeed ? 'animate-pulse' : ''}`} />
-            <span>Feed</span>
-          </button>
+          {/* Feed Toggle - only show when available */}
+          {feedStatus === 'available' && (
+            <button
+              onClick={() => setShowTelegramFeed(!showTelegramFeed)}
+              className={`flex items-center gap-2 bg-zinc-900/90 backdrop-blur border px-3 py-2 rounded-lg text-xs font-medium transition-all shadow-lg ${
+                showTelegramFeed ? 'border-blue-600 text-blue-400 bg-blue-900/20' : 'border-zinc-700 text-white hover:bg-zinc-800'
+              }`}
+            >
+              <Radio className={`w-3.5 h-3.5 ${showTelegramFeed ? 'animate-pulse' : ''}`} />
+              <span>Feed</span>
+            </button>
+          )}
+          {feedStatus === 'loading' && (
+            <div className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium text-zinc-500 shadow-lg">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Feed</span>
+            </div>
+          )}
           
-          {/* Analytics Link */}
-          <a href="/analytics" className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all text-white hover:bg-zinc-800 hover:border-violet-600 hover:text-violet-400 shadow-lg">
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>Analytics</span>
-          </a>
+          {/* Analytics Link - only show when available */}
+          {analyticsStatus === 'available' && (
+            <a href="/analytics" className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all text-white hover:bg-zinc-800 hover:border-violet-600 hover:text-violet-400 shadow-lg">
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Analytics</span>
+            </a>
+          )}
+          {analyticsStatus === 'loading' && (
+            <div className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium text-zinc-500 shadow-lg">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Analytics</span>
+            </div>
+          )}
           
-          {/* Summary Link */}
-          <a href="/summary" className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all text-white hover:bg-zinc-800 hover:border-amber-600 hover:text-amber-400 shadow-lg">
-            <span className="text-sm">📊</span>
-            <span>Summary</span>
-          </a>
+          {/* Summary Link - only show when available */}
+          {summaryStatus === 'available' && (
+            <a href="/summary" className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium transition-all text-white hover:bg-zinc-800 hover:border-amber-600 hover:text-amber-400 shadow-lg">
+              <span className="text-sm">📊</span>
+              <span>Summary</span>
+            </a>
+          )}
+          {summaryStatus === 'loading' && (
+            <div className="flex items-center gap-2 bg-zinc-900/90 backdrop-blur border border-zinc-700 px-3 py-2 rounded-lg text-xs font-medium text-zinc-500 shadow-lg">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Summary</span>
+            </div>
+          )}
           
-          <div className="w-px h-6 bg-zinc-800 mx-1"></div>
+          {/* Only show divider if at least one button is visible */}
+          {(feedStatus === 'available' || analyticsStatus === 'available' || summaryStatus === 'available') && (
+            <div className="w-px h-6 bg-zinc-800 mx-1"></div>
+          )}
           
           {/* Refresh Button */}
           <button
@@ -496,23 +635,47 @@ export default function Home() {
             <section className="space-y-3">
               <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Tools & Analysis</h3>
               <div className="grid grid-cols-2 gap-2">
-                <a href="/analytics" className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col gap-2 hover:bg-zinc-800 transition-colors">
-                  <BarChart3 className="w-6 h-6 text-violet-400" />
-                  <span className="text-sm font-bold text-white">Analytics Dashboard</span>
-                </a>
-                <a href="/summary" className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col gap-2 hover:bg-zinc-800 transition-colors">
-                  <span className="text-2xl">📊</span>
-                  <span className="text-sm font-bold text-white">AI Summary</span>
-                </a>
+                {analyticsStatus === 'available' && (
+                  <a href="/analytics" className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col gap-2 hover:bg-zinc-800 transition-colors">
+                    <BarChart3 className="w-6 h-6 text-violet-400" />
+                    <span className="text-sm font-bold text-white">Analytics Dashboard</span>
+                  </a>
+                )}
+                {analyticsStatus === 'loading' && (
+                  <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col gap-2 opacity-50">
+                    <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
+                    <span className="text-sm font-bold text-zinc-500">Loading...</span>
+                  </div>
+                )}
+                {summaryStatus === 'available' && (
+                  <a href="/summary" className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col gap-2 hover:bg-zinc-800 transition-colors">
+                    <span className="text-2xl">📊</span>
+                    <span className="text-sm font-bold text-white">AI Summary</span>
+                  </a>
+                )}
+                {summaryStatus === 'loading' && (
+                  <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col gap-2 opacity-50">
+                    <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
+                    <span className="text-sm font-bold text-zinc-500">Loading...</span>
+                  </div>
+                )}
               </div>
               
-               <button 
+              {feedStatus === 'available' && (
+                <button 
                   onClick={() => setShowTelegramFeed(!showTelegramFeed)}
                   className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${showTelegramFeed ? 'bg-blue-500/10 border-blue-500/30' : 'bg-zinc-900 border-zinc-800'}`}
                 >
                   <Radio className={`w-5 h-5 ${showTelegramFeed ? 'text-blue-400 animate-pulse' : 'text-zinc-500'}`} />
                   <span className="text-sm font-bold text-zinc-200">Telegram Live Feed</span>
                 </button>
+              )}
+              {feedStatus === 'loading' && (
+                <div className="w-full p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center gap-3 opacity-50">
+                  <Loader2 className="w-5 h-5 text-zinc-500 animate-spin" />
+                  <span className="text-sm font-bold text-zinc-500">Loading Feed...</span>
+                </div>
+              )}
             </section>
             
             {/* Source Filters */}
@@ -557,6 +720,123 @@ export default function Home() {
           <p className="text-xs text-zinc-600 mt-2">
             Pop: {(selectedProvince.properties.population / 1000000).toFixed(1)}M
           </p>
+        </div>
+      )}
+
+      {/* Suggest Source Modal */}
+      {showSuggestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Plus className="w-5 h-5 text-zinc-400" />
+                Suggest a Source
+              </h3>
+              <button onClick={() => setShowSuggestModal(false)} className="text-zinc-500 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              {suggestStatus === 'success' ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in slide-in-from-bottom-4">
+                  <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mb-4">
+                    <CheckCircle className="w-8 h-8 text-green-500" />
+                  </div>
+                  <h4 className="text-xl font-bold text-white mb-2">Suggestion Sent!</h4>
+                  <p className="text-zinc-400 text-sm">Thank you for contributing. Our team will review your suggestion shortly.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleSuggestSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">Source Type</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['telegram', 'twitter', 'instagram', 'youtube', 'rss', 'reddit'].map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setSuggestForm(prev => ({ ...prev, source_type: type }))}
+                          className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-all ${
+                            suggestForm.source_type === type 
+                              ? 'bg-zinc-700 text-white border border-zinc-600' 
+                              : 'bg-zinc-800 text-zinc-400 border border-transparent hover:bg-zinc-700/50'
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+                      Identifier / Username <span className="text-red-500">*</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      required
+                      value={suggestForm.identifier}
+                      onChange={e => setSuggestForm(prev => ({ ...prev, identifier: e.target.value }))}
+                      placeholder={
+                        suggestForm.source_type === 'telegram' ? 'channel_username' :
+                        suggestForm.source_type === 'twitter' ? 'username' :
+                        suggestForm.source_type === 'rss' ? 'Feed ID' : 'username/id'
+                      }
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 transition-all"
+                    />
+                  </div>
+                  
+                  {(suggestForm.source_type === 'rss' || suggestForm.source_type === 'youtube') && (
+                    <div className="animate-in fade-in slide-in-from-top-2">
+                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+                        Full URL <span className="text-red-500">*</span>
+                      </label>
+                      <input 
+                        type="url" 
+                        required
+                        value={suggestForm.url}
+                        onChange={e => setSuggestForm(prev => ({ ...prev, url: e.target.value }))}
+                        placeholder="https://..."
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 transition-all"
+                      />
+                    </div>
+                  )}
+                  
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">Notes (Optional)</label>
+                    <textarea 
+                      value={suggestForm.notes}
+                      onChange={e => setSuggestForm(prev => ({ ...prev, notes: e.target.value }))}
+                      placeholder="Why is this source reliable? What kind of content does it post?"
+                      rows={3}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 transition-all resize-none"
+                    />
+                  </div>
+                  
+                  {suggestStatus === 'error' && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs flex items-center gap-2 animate-in shake">
+                      <span className="font-bold">Error:</span> Could not submit suggestion. Please try again.
+                    </div>
+                  )}
+                  
+                  <button
+                    type="submit"
+                    disabled={isSuggesting}
+                    className="w-full bg-white text-black font-bold py-3 rounded-xl hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
+                  >
+                    {isSuggesting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Submit Suggestion
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </main>

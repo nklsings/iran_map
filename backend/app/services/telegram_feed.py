@@ -226,12 +226,35 @@ class TelegramFeedService:
         Fetch and process messages from all priority channels.
         
         Args:
-            channels: Optional list of channel configs (uses PRIORITY_CHANNELS if None)
+            channels: Optional list of channel configs (uses DB or PRIORITY_CHANNELS if None)
             
         Returns:
             Number of new messages stored
         """
+        if channels is None:
+            # Try fetching from DB first
+            try:
+                db_channels = self.db.query(models.DataSource).filter(
+                    models.DataSource.source_type == "telegram",
+                    models.DataSource.is_active == True
+                ).order_by(models.DataSource.priority).all()
+                
+                if db_channels:
+                    channels = [
+                        {
+                            "channel": s.identifier, 
+                            "name": s.name, 
+                            "priority": s.priority,
+                            "category": s.category
+                        } 
+                        for s in db_channels
+                    ]
+            except Exception as e:
+                print(f"  TelegramFeed: Error fetching sources from DB - {e}")
+        
+        # Fallback to hardcoded if still None
         channels = channels or PRIORITY_CHANNELS
+        
         total_stored = 0
         
         for config in channels:
@@ -280,52 +303,64 @@ class TelegramFeedService:
         Returns:
             Tuple of (messages, total_count)
         """
-        query = self.db.query(models.TelegramMessage)
-        
-        # Time filter
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-        query = query.filter(models.TelegramMessage.timestamp >= cutoff)
-        
-        # Channel filter
-        if channel:
-            query = query.filter(models.TelegramMessage.channel == channel)
-        
-        # Urgency filter
-        if min_urgency > 0:
-            query = query.filter(models.TelegramMessage.urgency_score >= min_urgency)
-        
-        # Relevance filter
-        if relevant_only:
-            query = query.filter(models.TelegramMessage.is_relevant == True)
-        
-        # Get total count
-        total = query.count()
-        
-        # Order by urgency (highest first) then timestamp
-        messages = query.order_by(
-            desc(models.TelegramMessage.urgency_score),
-            desc(models.TelegramMessage.timestamp)
-        ).offset(offset).limit(limit).all()
-        
-        return messages, total
+        try:
+            query = self.db.query(models.TelegramMessage)
+            
+            # Time filter
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+            query = query.filter(models.TelegramMessage.timestamp >= cutoff)
+            
+            # Channel filter
+            if channel:
+                query = query.filter(models.TelegramMessage.channel == channel)
+            
+            # Urgency filter
+            if min_urgency > 0:
+                query = query.filter(models.TelegramMessage.urgency_score >= min_urgency)
+            
+            # Relevance filter
+            if relevant_only:
+                query = query.filter(models.TelegramMessage.is_relevant == True)
+            
+            # Get total count
+            total = query.count()
+            
+            # Order by urgency (highest first) then timestamp
+            messages = query.order_by(
+                desc(models.TelegramMessage.urgency_score),
+                desc(models.TelegramMessage.timestamp)
+            ).offset(offset).limit(limit).all()
+            
+            return messages, total
+        except Exception as e:
+            print(f"  TelegramFeed: Error getting feed - {e}")
+            return [], 0
     
     def get_channels(self) -> List[str]:
         """Get list of channels with stored messages"""
-        channels = self.db.query(models.TelegramMessage.channel).distinct().all()
-        return [c[0] for c in channels]
+        try:
+            channels = self.db.query(models.TelegramMessage.channel).distinct().all()
+            return [c[0] for c in channels]
+        except Exception as e:
+            print(f"  TelegramFeed: Error getting channels - {e}")
+            return []
     
     def get_high_urgency(self, threshold: float = 0.8, limit: int = 10) -> List[models.TelegramMessage]:
         """Get recent high-urgency messages"""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=12)
-        
-        return self.db.query(models.TelegramMessage).filter(
-            models.TelegramMessage.timestamp >= cutoff,
-            models.TelegramMessage.urgency_score >= threshold,
-            models.TelegramMessage.is_relevant == True
-        ).order_by(
-            desc(models.TelegramMessage.urgency_score),
-            desc(models.TelegramMessage.timestamp)
-        ).limit(limit).all()
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=12)
+            
+            return self.db.query(models.TelegramMessage).filter(
+                models.TelegramMessage.timestamp >= cutoff,
+                models.TelegramMessage.urgency_score >= threshold,
+                models.TelegramMessage.is_relevant == True
+            ).order_by(
+                desc(models.TelegramMessage.urgency_score),
+                desc(models.TelegramMessage.timestamp)
+            ).limit(limit).all()
+        except Exception as e:
+            print(f"  TelegramFeed: Error getting high urgency - {e}")
+            return []
     
     def cleanup_old_messages(self, days: int = 7) -> int:
         """Remove messages older than N days"""
